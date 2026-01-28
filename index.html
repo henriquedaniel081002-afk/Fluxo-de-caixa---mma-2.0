@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fluxo de Caixa - MMA</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <div class="app">
+      <header class="app__header">
+        <div class="app__title">
+          <p class="app__eyebrow">DASHBOARD FINANCEIRO</p>
+          <h1>Fluxo de Caixa - MMA</h1>
+        </div>
+
+        <div class="connection" id="connection-status" aria-live="polite">
+          <span class="connection__dot"></span>
+          <span id="connection-text">Conectando à planilha...</span>
+        </div>
+      </header>
+
+      <section class="filters" aria-label="Filtros globais">
+        <div class="filters__box">
+          <div class="filters__quick" role="group" aria-label="Filtros rápidos">
+            <button class="chip" data-filter="quinzena-1" type="button">Quinzena 1</button>
+            <button class="chip" data-filter="quinzena-2" type="button">Quinzena 2</button>
+            <button class="chip" data-filter="today" type="button">Dia atual</button>
+            <button class="chip" data-filter="next7" type="button">7 dias</button>
+          </div>
+
+          <div class="filters__range">
+            <label class="field">
+              <span>Mês</span>
+              <select id="month-select" class="select" aria-label="Selecionar mês"></select>
+            </label>
+
+            <label class="field">
+              <span>Início</span>
+              <input type="date" id="filter-start" />
+            </label>
+
+            <label class="field">
+              <span>Fim</span>
+              <input type="date" id="filter-end" />
+            </label>
+
+            <button class="chip chip--ghost" data-filter="custom" type="button">
+              Período personalizado
+            </button>
+
+            <button
+              class="chip chip--ghost"
+              id="clear-day-filter"
+              type="button"
+              title="Limpar filtro de dia"
+            >
+              Limpar dia
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section class="cards" aria-label="Indicadores">
+        <article class="card">
+          <p>Recebimentos do período</p>
+          <h2 id="total-entradas">R$ 0,00</h2>
+        </article>
+
+        <article class="card">
+          <p>Pagamentos do período</p>
+          <h2 id="total-saidas">R$ 0,00</h2>
+        </article>
+      </section>
+
+      <section class="tables" aria-label="Tabelas">
+        <div class="table-card">
+          <header class="table-card__header">
+            <div>
+              <h3>Resumo diário</h3>
+              <p>Entradas | Saídas | Saldo Final (clique em um dia para ver detalhes)</p>
+            </div>
+          </header>
+
+          <div class="table-wrapper" role="region" aria-label="Tabela de resumo diário">
+            <table class="data-table" id="summary-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Entradas</th>
+                  <th>Saídas</th>
+                  <th>Saldo final</th>
+                </tr>
+              </thead>
+              <tbody id="daily-summary"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>Dados carregados diretamente do Google Sheets (CSV).</p>
+      </footer>
+    </div>
+
+    <!-- MODAL (Desktop) / BOTTOM SHEET (Mobile) -->
+    <div class="modal" id="day-modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div class="modal__overlay" id="modal-overlay"></div>
+
+      <div class="modal__panel" role="document" aria-label="Detalhamento do dia">
+        <header class="modal__header">
+          <div>
+            <h4 class="modal__title" id="modal-title">Detalhes do dia</h4>
+            <p class="modal__subtitle" id="modal-subtitle">—</p>
+          </div>
+
+          <button class="modal__close" id="modal-close" type="button" aria-label="Fechar">
+            ✕
+          </button>
+        </header>
+
+        <div class="modal__totals">
+          <div class="pill">
+            <span>Entradas</span>
+            <strong id="modal-total-entradas">R$ 0,00</strong>
+          </div>
+          <div class="pill">
+            <span>Saídas</span>
+            <strong id="modal-total-saidas">R$ 0,00</strong>
+          </div>
+
+          <!-- Exibe apenas quando o saldo inicial do dia for negativo -->
+          <div class="pill pill--full pill--alert" id="modal-repasse-wrap" style="display: none;">
+            <span>Repasse necessário</span>
+            <strong id="modal-repasse">R$ 0,00</strong>
+          </div>
+        </div>
+
+        <div class="modal__content">
+          <section class="modal__section">
+            <h5>Entradas</h5>
+            <div class="list" id="modal-entries"></div>
+          </section>
+
+          <section class="modal__section">
+            <h5>Saídas</h5>
+            <div class="list" id="modal-expenses"></div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
