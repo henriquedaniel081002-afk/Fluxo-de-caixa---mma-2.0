@@ -378,10 +378,17 @@ function renderModalForDay(day) {
   modalTotalEntradas.textContent = brl.format(day.entradasResumo);
   modalTotalSaidas.textContent = brl.format(day.saidasDia);
 
-  // Repasse necessário: aparece somente quando o saldo inicial do dia é negativo.
-  // Cálculo: quanto precisa entrar a mais para que o saldo final do dia seja >= 0.
-  if (day.saldoInicial < 0) {
-    const repasseNecessario = Math.max(0, day.saidasDia - (day.saldoInicial + day.entradasDia));
+  // Repasse necessário: aparece quando o caixa disponível no dia não cobre as saídas.
+// Condição: (saldoInicial + entradasDia) < saidasDia
+// Cálculo:
+//   base = saidasDia - (saldoInicial + entradasDia)
+//   comMargem = base * 1.10
+//   exibido = arredonda para cima ao milhar (ceil)
+  const caixaDisponivel = day.saldoInicial + day.entradasDia;
+  if (caixaDisponivel < day.saidasDia) {
+    const base = Math.max(0, day.saidasDia - caixaDisponivel);
+    const comMargem = base * 1.10;
+    const repasseNecessario = Math.ceil(comMargem / 1000) * 1000;
     modalRepasse.textContent = brl.format(repasseNecessario);
     modalRepasseWrap.style.display = "flex";
   } else {
