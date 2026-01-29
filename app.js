@@ -15,6 +15,18 @@ const endInput = document.getElementById("filter-end");
 const dailySummaryBody = document.getElementById("daily-summary");
 
 const clearDayBtn = document.getElementById("clear-day-filter");
+const openRepassesBtn = document.getElementById("open-repasses-modal");
+
+// Repasses modal elements
+const repassesModal = document.getElementById("repasses-modal");
+const repassesOverlay = document.getElementById("repasses-overlay");
+const repassesClose = document.getElementById("repasses-close");
+const repassesSummary = document.getElementById("repasses-summary");
+const repassesCount = document.getElementById("repasses-count");
+const repassesTotal = document.getElementById("repasses-total");
+const repassesEmpty = document.getElementById("repasses-empty");
+const repassesList = document.getElementById("repasses-list");
+const repassesClearAll = document.getElementById("repasses-clear-all");
 const monthSelect = document.getElementById("month-select");
 
 const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
@@ -411,6 +423,131 @@ function closeModal(forceUnlock = false) {
   document.body.style.overflow = "";
 }
 
+
+// ===== Repasses Modal =====
+function openRepassesModal() {
+  if (!repassesModal) return;
+  repassesModal.classList.add("modal--open");
+  repassesModal.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+}
+
+function closeRepassesModal() {
+  if (!repassesModal) return;
+  repassesModal.classList.remove("modal--open");
+  repassesModal.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+}
+
+function recalcAfterRepasseChange() {
+  daySeries = buildDaySeries(rawRows, repasseFlags);
+  monthKeys = buildMonthKeys();
+
+  if (selectedMonthKey && !monthKeys.includes(selectedMonthKey)) {
+    selectedMonthKey = pickDefaultMonthKey();
+  }
+
+  populateMonthSelect();
+  updateQuinzenaChipLabels();
+  render();
+
+  const filtered = getFilteredDaySeries();
+  const selected = getSelectedDayIfAny(filtered);
+  if (selected) renderModalForDay(selected);
+}
+
+function getSimulatedRepassesForView() {
+  const filtered = getFilteredDaySeries();
+  return filtered
+    .filter((d) => !!repasseFlags.get(d.dateKey) && d.repasseSuggested > 0)
+    .map((d) => ({
+      date: d.date,
+      dateKey: d.dateKey,
+      value: d.repasseSuggested,
+    }))
+    .sort((a, b) => a.date - b.date);
+}
+
+function renderRepassesModal() {
+  if (!repassesList || !repassesCount || !repassesTotal || !repassesEmpty) return;
+
+  const items = getSimulatedRepassesForView();
+
+  repassesCount.textContent = String(items.length);
+  const total = items.reduce((acc, x) => acc + (x.value || 0), 0);
+  repassesTotal.textContent = brl.format(total);
+
+  if (repassesSummary) {
+    repassesSummary.textContent = "Considerando o período exibido na tela.";
+  }
+
+  repassesList.innerHTML = "";
+  if (items.length === 0) {
+    repassesEmpty.style.display = "block";
+    if (repassesClearAll) repassesClearAll.disabled = true;
+    return;
+  }
+
+  repassesEmpty.style.display = "none";
+  if (repassesClearAll) repassesClearAll.disabled = false;
+
+  for (const it of items) {
+    const row = document.createElement("div");
+    row.className = "repasses__row";
+
+    const meta = document.createElement("div");
+    meta.className = "repasses__meta";
+
+    const dateEl = document.createElement("div");
+    dateEl.className = "repasses__date";
+    dateEl.textContent = formatDateBR(it.date);
+
+    const valueEl = document.createElement("div");
+    valueEl.className = "repasses__value";
+    valueEl.textContent = brl.format(it.value || 0);
+
+    meta.appendChild(dateEl);
+    meta.appendChild(valueEl);
+
+    const actions = document.createElement("div");
+    actions.className = "repasses__actions";
+
+    const goBtn = document.createElement("button");
+    goBtn.type = "button";
+    goBtn.className = "chip chip--ghost";
+    goBtn.textContent = "Ir para o dia";
+    goBtn.onclick = () => {
+      closeRepassesModal();
+      selectedDayKey = it.dateKey;
+      render();
+      const day = daySeries.find((d) => d.dateKey === it.dateKey);
+      if (day) {
+        renderModalForDay(day);
+        openModal();
+      }
+    };
+
+    const clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.className = "chip chip--ghost";
+    clearBtn.textContent = "Limpar";
+    clearBtn.onclick = () => {
+      repasseFlags.delete(it.dateKey);
+      saveRepasseFlags();
+      recalcAfterRepasseChange();
+      renderRepassesModal();
+    };
+
+    actions.appendChild(goBtn);
+    actions.appendChild(clearBtn);
+
+    row.appendChild(meta);
+    row.appendChild(actions);
+
+    repassesList.appendChild(row);
+  }
+}
+
 function renderModalForDay(day) {
   if (!day) return;
 
@@ -583,172 +720,62 @@ clearDayBtn.addEventListener("click", () => {
   render();
 });
 
-
-init();
-
-// ===== Modal: Repasses simulados (central de controle) =====
-const repassesOpenBtn = document.getElementById("repasses-open");
-const repassesModal = document.getElementById("repasses-modal");
-const repassesOverlay = document.getElementById("repasses-overlay");
-const repassesCloseBtn = document.getElementById("repasses-close");
-const repassesList = document.getElementById("repasses-list");
-const repassesEmpty = document.getElementById("repasses-empty");
-const repassesCount = document.getElementById("repasses-count");
-const repassesTotal = document.getElementById("repasses-total");
-const repassesSummary = document.getElementById("repasses-summary");
-const repassesClearAllBtn = document.getElementById("repasses-clear-all");
-
-function fmtBRL(n) {
-  try {
-    return (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-  } catch {
-    return `R$ ${(n || 0).toFixed(2)}`;
-  }
-}
-
-function fmtDateFromKey(key) {
-  // key: YYYY-MM-DD
-  const [y, m, d] = String(key).split("-");
-  if (!y || !m || !d) return key;
-  return `${d}/${m}/${y}`;
-}
-
-function openRepassesModal() {
-  if (!repassesModal) return;
-  renderRepassesModal();
-  repassesModal.classList.add("modal--open");
-  repassesModal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-}
-
-function closeRepassesModal() {
-  if (!repassesModal) return;
-  repassesModal.classList.remove("modal--open");
-  repassesModal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-}
-
-function rebuildAfterRepasseChange() {
-  daySeries = buildDaySeries(rawRows, repasseFlags);
-  monthKeys = buildMonthKeys();
-  // mantém selectedMonthKey válido
-  if (selectedMonthKey && monthKeys.length && !monthKeys.includes(selectedMonthKey)) {
-    selectedMonthKey = monthKeys[monthKeys.length - 1];
-  }
+startInput.addEventListener("change", () => {
+  setActiveChip("custom");
+  activeFilter = "custom";
   render();
+});
+
+endInput.addEventListener("change", () => {
+  setActiveChip("custom");
+  activeFilter = "custom";
+  render();
+});
+
+monthSelect.addEventListener("change", () => {
+  selectedMonthKey = monthSelect.value || selectedMonthKey;
+  updateQuinzenaChipLabels();
+
+  if (activeFilter === "quinzena-1" || activeFilter === "quinzena-2") {
+    selectedDayKey = null;
+    closeModal(true);
+    render();
+  }
+});
+
+// Modal controls
+modalOverlay.addEventListener("click", () => closeModal(true));
+modalClose.addEventListener("click", () => closeModal(true));
+
+// Repasses modal controls
+if (openRepassesBtn) {
+  openRepassesBtn.addEventListener("click", () => {
+    renderRepassesModal();
+    openRepassesModal();
+  });
 }
-
-function renderRepassesModal() {
-  if (!repassesList || !repassesEmpty || !repassesCount || !repassesTotal || !repassesSummary) return;
-
-  repassesList.innerHTML = "";
-
-  const activeKeys = [];
-  if (repasseFlags && typeof repasseFlags.forEach === "function") {
-    repasseFlags.forEach((v, k) => {
-      if (v) activeKeys.push(k);
-    });
-  }
-
-  activeKeys.sort();
-
-  // Constrói lista baseada na daySeries atual (que já considera repasses aplicados)
-  let total = 0;
-  const rows = [];
-
-  for (const key of activeKeys) {
-    const day = daySeries.find((d) => d.dateKey === key);
-    const value = day ? (day.repasseApplied || 0) : 0;
-
-    // Se por algum motivo não houver valor aplicado, ainda assim lista o dia para auditoria
-    total += value;
-
-    rows.push({ key, value });
-  }
-
-  repassesCount.textContent = String(rows.length);
-  repassesTotal.textContent = fmtBRL(total);
-  repassesSummary.textContent = rows.length ? "Dias com repasse simulado ativo." : "—";
-
-  if (!rows.length) {
-    repassesEmpty.style.display = "block";
-    repassesClearAllBtn && (repassesClearAllBtn.disabled = true);
-    return;
-  }
-
-  repassesEmpty.style.display = "none";
-  if (repassesClearAllBtn) repassesClearAllBtn.disabled = false;
-
-  for (const item of rows) {
-    const el = document.createElement("div");
-    el.className = "repasses__row";
-    el.innerHTML = `
-      <div class="repasses__rowLeft">
-        <strong>${fmtDateFromKey(item.key)}</strong>
-        <span>${fmtBRL(item.value)}</span>
-      </div>
-      <div class="repasses__rowRight">
-        <button class="chip chip--ghost repasses__btn" type="button" data-action="goto" data-key="${item.key}">Ir para o dia</button>
-        <button class="chip chip--ghost repasses__btn" type="button" data-action="clear" data-key="${item.key}">Limpar</button>
-      </div>
-    `;
-    repassesList.appendChild(el);
-  }
-}
-
-if (repassesOpenBtn) repassesOpenBtn.addEventListener("click", openRepassesModal);
-if (repassesCloseBtn) repassesCloseBtn.addEventListener("click", closeRepassesModal);
-if (repassesOverlay) repassesOverlay.addEventListener("click", closeRepassesModal);
-
-if (repassesClearAllBtn) {
-  repassesClearAllBtn.addEventListener("click", () => {
-    const hasAny = repasseFlags && typeof repasseFlags.size === "number" ? repasseFlags.size > 0 : false;
-    if (!hasAny) return;
-
-    if (!confirm("Deseja remover TODOS os repasses simulados?")) return;
-
+if (repassesOverlay) repassesOverlay.addEventListener("click", () => closeRepassesModal());
+if (repassesClose) repassesClose.addEventListener("click", () => closeRepassesModal());
+if (repassesClearAll) {
+  repassesClearAll.addEventListener("click", () => {
+    const items = getSimulatedRepassesForView();
+    if (items.length === 0) return;
+    const ok = confirm("Limpar todos os repasses simulados?");
+    if (!ok) return;
     repasseFlags = new Map();
-    localStorage.removeItem(REPASSE_STORAGE_KEY);
-    rebuildAfterRepasseChange();
+    saveRepasseFlags();
+    recalcAfterRepasseChange();
     renderRepassesModal();
   });
 }
 
-if (repassesList) {
-  repassesList.addEventListener("click", (e) => {
-    const btn = e.target && e.target.closest ? e.target.closest("button[data-action]") : null;
-    if (!btn) return;
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  closeModal(true);
+  closeRepassesModal();
+});
 
-    const action = btn.getAttribute("data-action");
-    const key = btn.getAttribute("data-key");
-    if (!key) return;
-
-    if (action === "clear") {
-      repasseFlags.delete(key);
-      saveRepasseFlags();
-      rebuildAfterRepasseChange();
-      renderRepassesModal();
-      return;
-    }
-
-    if (action === "goto") {
-      const day = daySeries.find((d) => d.dateKey === key);
-      if (!day) {
-        alert("Dia não encontrado no período atual.");
-        return;
-      }
-      closeRepassesModal();
-      selectedDayKey = key;
-      render();
-      renderModalForDay(day);
-      openModal();
-    }
-  });
-}
-
-
-
-// ===== DATA LOAD (restaurado) =====
+// ===== INIT =====
 async function init() {
   try {
     setConnection(null, "Conectando à planilha...");
@@ -780,4 +807,3 @@ async function init() {
 }
 
 init();
-

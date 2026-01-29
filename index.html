@@ -58,10 +58,17 @@
             >
               Limpar dia
             </button>
-            <button class="chip chip--ghost" id="repasses-open" type="button" title="Ver e gerenciar dias com repasse simulado">
+
+            <button
+              class="chip chip--ghost"
+              id="open-repasses-modal"
+              type="button"
+              title="Ver dias com repasses simulados"
+            >
               Repasses simulados
             </button>
-</div>
+
+          </div>
         </div>
       </section>
 
@@ -159,46 +166,53 @@
         </div>
       </div>
     </div>
-    
+
+    <script src="app.js" defer></script>
+  
     <!-- MODAL: REPASSES SIMULADOS -->
     <div class="modal" id="repasses-modal" aria-hidden="true" role="dialog" aria-modal="true">
       <div class="modal__overlay" id="repasses-overlay"></div>
 
-      <div class="modal__panel repasses__panel" role="document" aria-label="Repasses simulados">
+      <div class="modal__panel" role="document" aria-label="Repasses simulados">
         <header class="modal__header">
           <div>
             <h4 class="modal__title">Repasses simulados</h4>
             <p class="modal__subtitle" id="repasses-summary">—</p>
           </div>
 
-          <button class="modal__close" id="repasses-close" type="button" aria-label="Fechar">✕</button>
+          <button class="modal__close" id="repasses-close" type="button" aria-label="Fechar">
+            ✕
+          </button>
         </header>
 
-        <div class="modal__totals repasses__totals">
-          <div class="pill">
-            <span>Dias</span>
-            <strong id="repasses-count">0</strong>
-          </div>
-          <div class="pill">
-            <span>Total</span>
-            <strong id="repasses-total">R$ 0,00</strong>
-          </div>
+        <div class="modal__content">
+          <section class="modal__section">
+            <div class="repasses__head">
+              <div class="pill">
+                <span>Dias</span>
+                <strong id="repasses-count">0</strong>
+              </div>
+              <div class="pill">
+                <span>Total</span>
+                <strong id="repasses-total">R$ 0,00</strong>
+              </div>
+            </div>
+
+            <div class="repasses__empty" id="repasses-empty" style="display:none;">
+              Nenhum dia com repasse simulado no período.
+            </div>
+
+            <div class="repasses__list" id="repasses-list"></div>
+          </section>
         </div>
 
-        <div class="modal__content repasses__content">
-          <div class="repasses__empty" id="repasses-empty">Nenhum dia com repasse simulado.</div>
-          <div class="repasses__list" id="repasses-list"></div>
-        </div>
-
-        <div class="repasses__actions">
-          <button class="chip chip--ghost" id="repasses-clear-all" type="button" title="Remover todas as simulações de repasse">
+        <footer class="modal__footer">
+          <button class="chip chip--ghost" id="repasses-clear-all" type="button">
             Limpar todos
           </button>
-        </div>
+        </footer>
       </div>
     </div>
-
-    <script src="app.js"></script>
 
 </body>
 </html>
