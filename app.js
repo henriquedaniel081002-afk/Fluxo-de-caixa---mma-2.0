@@ -746,3 +746,38 @@ if (repassesList) {
   });
 }
 
+
+
+// ===== DATA LOAD (restaurado) =====
+async function init() {
+  try {
+    setConnection(null, "Conectando à planilha...");
+    const res = await fetch(CSV_URL, { cache: "no-store" });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const text = await res.text();
+    rawRows = parseCSV(text);
+
+    repasseFlags = loadRepasseFlags();
+
+    daySeries = buildDaySeries(rawRows, repasseFlags);
+    anchorDate = pickAnchorDate();
+
+    monthKeys = buildMonthKeys();
+    selectedMonthKey = pickDefaultMonthKey();
+    populateMonthSelect();
+    updateQuinzenaChipLabels();
+
+    setActiveChip("today");
+    activeFilter = "today";
+
+    setConnection("ok", "Dados sincronizados com a planilha");
+    render();
+  } catch (err) {
+    console.error(err);
+    setConnection("err", "Erro ao carregar dados da planilha");
+  }
+}
+
+init();
+
