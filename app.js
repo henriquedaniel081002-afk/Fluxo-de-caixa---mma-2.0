@@ -439,7 +439,8 @@ function closeRepassesModal() {
   document.body.style.overflow = "";
 }
 
-function recalcAfterRepasseChange() {
+function recalcAfterRepasseChange(options = {}) {
+  const { updateDayModal = true } = options;
   daySeries = buildDaySeries(rawRows, repasseFlags);
   monthKeys = buildMonthKeys();
 
@@ -451,9 +452,11 @@ function recalcAfterRepasseChange() {
   updateQuinzenaChipLabels();
   render();
 
-  const filtered = getFilteredDaySeries();
-  const selected = getSelectedDayIfAny(filtered);
-  if (selected) renderModalForDay(selected);
+  if (updateDayModal && modal && modal.classList.contains("modal--open")) {
+    const filtered = getFilteredDaySeries();
+    const selected = getSelectedDayIfAny(filtered);
+    if (selected) renderModalForDay(selected);
+  }
 }
 
 function getSimulatedRepassesForView() {
@@ -531,10 +534,11 @@ function renderRepassesModal() {
     clearBtn.type = "button";
     clearBtn.className = "chip chip--ghost";
     clearBtn.textContent = "Limpar";
-    clearBtn.onclick = () => {
+    clearBtn.onclick = (e) => {
+      if (e) e.stopPropagation();
       repasseFlags.delete(it.dateKey);
       saveRepasseFlags();
-      recalcAfterRepasseChange();
+      recalcAfterRepasseChange({ updateDayModal: false });
       renderRepassesModal();
     };
 
@@ -750,6 +754,9 @@ modalClose.addEventListener("click", () => closeModal(true));
 // Repasses modal controls
 if (openRepassesBtn) {
   openRepassesBtn.addEventListener("click", () => {
+    // Evita manter o modal de detalhes aberto por trás
+    if (modal && modal.classList.contains("modal--open")) closeModal(true);
+
     renderRepassesModal();
     openRepassesModal();
   });
