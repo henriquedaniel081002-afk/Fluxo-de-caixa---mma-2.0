@@ -132,8 +132,14 @@
 
           <!-- Exibe apenas quando o saldo inicial do dia for negativo -->
           <div class="pill pill--full pill--alert" id="modal-repasse-wrap" style="display: none;">
-            <span>Repasse necessário</span>
-            <strong id="modal-repasse">R$ 0,00</strong>
+            <div class="repasse__top">
+              <span>Repasse necessário</span>
+              <strong id="modal-repasse">R$ 0,00</strong>
+            </div>
+            <label class="repasse__toggle">
+              <input type="checkbox" id="modal-repasse-toggle" />
+              <span>Simular repasse neste dia</span>
+            </label>
           </div>
         </div>
 

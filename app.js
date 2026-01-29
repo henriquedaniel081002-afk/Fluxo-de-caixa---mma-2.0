@@ -31,6 +31,7 @@ const modalTotalEntradas = document.getElementById("modal-total-entradas");
 const modalTotalSaidas = document.getElementById("modal-total-saidas");
 const modalRepasseWrap = document.getElementById("modal-repasse-wrap");
 const modalRepasse = document.getElementById("modal-repasse");
+const modalRepasseToggle = document.getElementById("modal-repasse-toggle");
 const modalEntries = document.getElementById("modal-entries");
 const modalExpenses = document.getElementById("modal-expenses");
 
@@ -43,6 +44,37 @@ let selectedDayKey = null;
 
 let monthKeys = [];
 let selectedMonthKey = null;
+
+// Repasse (simulação)
+const REPASSE_STORAGE_KEY = "repasse_flags_v1";
+let repasseFlags = new Map();
+
+function loadRepasseFlags() {
+  try {
+    const raw = localStorage.getItem(REPASSE_STORAGE_KEY);
+    if (!raw) return new Map();
+    const obj = JSON.parse(raw);
+    const m = new Map();
+    if (obj && typeof obj === "object") {
+      Object.keys(obj).forEach((k) => m.set(k, !!obj[k]));
+    }
+    return m;
+  } catch {
+    return new Map();
+  }
+}
+
+function saveRepasseFlags() {
+  try {
+    const obj = {};
+    repasseFlags.forEach((v, k) => {
+      if (v) obj[k] = true;
+    });
+    localStorage.setItem(REPASSE_STORAGE_KEY, JSON.stringify(obj));
+  } catch {
+    // ignore
+  }
+}
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -159,7 +191,7 @@ function parseCSV(text) {
 }
 
 // ===== build day series =====
-function buildDaySeries(rows) {
+function buildDaySeries(rows, flagsMap) {
   const byDay = new Map();
   for (const r of rows) {
     if (!byDay.has(r.dateKey)) byDay.set(r.dateKey, []);
@@ -184,7 +216,7 @@ function buildDaySeries(rows) {
       saldoInicial = prevSaldoFinalForNext;
     }
 
-    const entradasDia = dayRows
+    const entradasOrig = dayRows
       .filter((x) => (x.tipo || "").toLowerCase() === "entrada" && (x.descricao || "").toUpperCase() !== "SALDO")
       .reduce((acc, x) => acc + x.valor, 0);
 
@@ -192,6 +224,24 @@ function buildDaySeries(rows) {
       .filter((x) => (x.tipo || "").toLowerCase() === "saída" || (x.tipo || "").toLowerCase() === "saida")
       .reduce((acc, x) => acc + x.valor, 0);
 
+    // Repasse necessário (sugestão): aparece quando o caixa disponível no dia não cobre as saídas.
+    // Condição: (saldoInicial + entradasOrig) < saidasDia
+    // Cálculo:
+    //   base = saidasDia - (saldoInicial + entradasOrig)
+    //   comMargem = base * 1.10
+    //   exibido = arredonda para cima ao milhar (ceil)
+    const caixaDisponivel = saldoInicial + entradasOrig;
+    let repasseSuggested = 0;
+    if (caixaDisponivel < saidasDia) {
+      const base = Math.max(0, saidasDia - caixaDisponivel);
+      const comMargem = base * 1.10;
+      repasseSuggested = Math.ceil(comMargem / 1000) * 1000;
+    }
+
+    const apply = !!(flagsMap && flagsMap.get(key)) && repasseSuggested > 0;
+    const repasseApplied = apply ? repasseSuggested : 0;
+
+    const entradasDia = entradasOrig + repasseApplied;
     const saldoFinal = saldoInicial + entradasDia - saidasDia;
     prevSaldoFinalForNext = saldoFinal;
 
@@ -201,9 +251,12 @@ function buildDaySeries(rows) {
       monthKey: toMonthKey(dayDate),
       saldoInicial,
       entradasDia,
+      entradasOrig,
       saidasDia,
       entradasResumo: saldoInicial + entradasDia,
       saldoFinal,
+      repasseSuggested,
+      repasseApplied,
       rows: dayRows,
     });
   }
@@ -366,6 +419,7 @@ function renderModalForDay(day) {
 
   const entradaRows = [
     { descricao: "SALDO INICIAL", valor: day.saldoInicial, strong: true },
+    ...(day.repasseApplied > 0 ? [{ descricao: "REPASSE (SIMULADO)", valor: day.repasseApplied, strong: true, simulated: true }] : []),
     ...day.rows
       .filter((x) => (x.tipo || "").toLowerCase() === "entrada" && (x.descricao || "").toUpperCase() !== "SALDO")
       .map((x) => ({ descricao: x.descricao, valor: x.valor, strong: false })),
@@ -378,21 +432,42 @@ function renderModalForDay(day) {
   modalTotalEntradas.textContent = brl.format(day.entradasResumo);
   modalTotalSaidas.textContent = brl.format(day.saidasDia);
 
-  // Repasse necessário: aparece quando o caixa disponível no dia não cobre as saídas.
-// Condição: (saldoInicial + entradasDia) < saidasDia
-// Cálculo:
-//   base = saidasDia - (saldoInicial + entradasDia)
-//   comMargem = base * 1.10
-//   exibido = arredonda para cima ao milhar (ceil)
-  const caixaDisponivel = day.saldoInicial + day.entradasDia;
-  if (caixaDisponivel < day.saidasDia) {
-    const base = Math.max(0, day.saidasDia - caixaDisponivel);
-    const comMargem = base * 1.10;
-    const repasseNecessario = Math.ceil(comMargem / 1000) * 1000;
-    modalRepasse.textContent = brl.format(repasseNecessario);
+  // Repasse necessário (sugestão) + simulação:
+// - Sugestão aparece quando (saldoInicial + entradasOrig) < saidasDia
+// - Se o toggle estiver ativo, o repasse é aplicado como entrada adicional do dia e o fluxo é recalculado a partir dele.
+  if (day.repasseSuggested > 0) {
+    modalRepasse.textContent = brl.format(day.repasseSuggested);
     modalRepasseWrap.style.display = "flex";
+
+    if (modalRepasseToggle) {
+      modalRepasseToggle.checked = !!repasseFlags.get(day.dateKey);
+      modalRepasseToggle.onchange = () => {
+        repasseFlags.set(day.dateKey, !!modalRepasseToggle.checked);
+        saveRepasseFlags();
+
+        daySeries = buildDaySeries(rawRows, repasseFlags);
+        monthKeys = buildMonthKeys();
+
+        // mantém o mês selecionado, se ainda existir
+        if (selectedMonthKey && !monthKeys.includes(selectedMonthKey)) {
+          selectedMonthKey = pickDefaultMonthKey();
+        }
+
+        populateMonthSelect();
+        updateQuinzenaChipLabels();
+        render();
+
+        const filtered = getFilteredDaySeries();
+        const selected = getSelectedDayIfAny(filtered);
+        if (selected) renderModalForDay(selected);
+      };
+    }
   } else {
     modalRepasseWrap.style.display = "none";
+    if (modalRepasseToggle) {
+      modalRepasseToggle.checked = false;
+      modalRepasseToggle.onchange = null;
+    }
   }
 
   modalEntries.innerHTML =
@@ -548,7 +623,9 @@ async function init() {
     const text = await res.text();
     rawRows = parseCSV(text);
 
-    daySeries = buildDaySeries(rawRows);
+    repasseFlags = loadRepasseFlags();
+
+    daySeries = buildDaySeries(rawRows, repasseFlags);
     anchorDate = pickAnchorDate();
 
     monthKeys = buildMonthKeys();

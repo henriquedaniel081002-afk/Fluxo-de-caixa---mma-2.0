@@ -602,3 +602,25 @@ input[type="date"]:focus,
     min-width: 96px;
   }
 }
+
+
+/* Repasse (simulação) */
+.repasse__top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+.repasse__toggle{
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-size:12px;
+  opacity:.95;
+  user-select:none;
+}
+.repasse__toggle input{
+  width:16px;
+  height:16px;
+}
