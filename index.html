@@ -58,16 +58,10 @@
             >
               Limpar dia
             </button>
-            <button
-              class="chip chip--ghost"
-              id="reset-repasses"
-              type="button"
-              title="Remove todas as simulações de repasse aplicadas em qualquer dia"
-            >
-              Limpar repasses
+            <button class="chip chip--ghost" id="repasses-open" type="button" title="Ver e gerenciar dias com repasse simulado">
+              Repasses simulados
             </button>
-
-          </div>
+</div>
         </div>
       </section>
 
@@ -165,21 +159,46 @@
         </div>
       </div>
     </div>
+    
+    <!-- MODAL: REPASSES SIMULADOS -->
+    <div class="modal" id="repasses-modal" aria-hidden="true" role="dialog" aria-modal="true">
+      <div class="modal__overlay" id="repasses-overlay"></div>
+
+      <div class="modal__panel repasses__panel" role="document" aria-label="Repasses simulados">
+        <header class="modal__header">
+          <div>
+            <h4 class="modal__title">Repasses simulados</h4>
+            <p class="modal__subtitle" id="repasses-summary">—</p>
+          </div>
+
+          <button class="modal__close" id="repasses-close" type="button" aria-label="Fechar">✕</button>
+        </header>
+
+        <div class="modal__totals repasses__totals">
+          <div class="pill">
+            <span>Dias</span>
+            <strong id="repasses-count">0</strong>
+          </div>
+          <div class="pill">
+            <span>Total</span>
+            <strong id="repasses-total">R$ 0,00</strong>
+          </div>
+        </div>
+
+        <div class="modal__content repasses__content">
+          <div class="repasses__empty" id="repasses-empty">Nenhum dia com repasse simulado.</div>
+          <div class="repasses__list" id="repasses-list"></div>
+        </div>
+
+        <div class="repasses__actions">
+          <button class="chip chip--ghost" id="repasses-clear-all" type="button" title="Remover todas as simulações de repasse">
+            Limpar todos
+          </button>
+        </div>
+      </div>
+    </div>
 
     <script src="app.js"></script>
-  
-<button id="btnRepassesSimulados" class="btn-secondary">Repasses simulados</button>
-
-<div id="modalRepasses" class="modal hidden">
-  <div class="modal-content">
-    <h2>Repasses simulados</h2>
-    <div id="listaRepasses"></div>
-    <div class="modal-actions">
-      <button id="btnLimparTodos" class="btn-danger">Limpar todos</button>
-      <button id="btnFecharRepasses">Fechar</button>
-    </div>
-  </div>
-</div>
 
 </body>
 </html>
