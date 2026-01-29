@@ -683,3 +683,56 @@ async function init() {
 }
 
 init();
+
+// Modal repasses simulados
+const btnRepasses = document.getElementById('btnRepassesSimulados');
+const modalRepasses = document.getElementById('modalRepasses');
+const listaRepasses = document.getElementById('listaRepasses');
+const btnLimparTodos = document.getElementById('btnLimparTodos');
+const btnFecharRepasses = document.getElementById('btnFecharRepasses');
+
+function renderListaRepasses(){
+  listaRepasses.innerHTML='';
+  if(!repasseFlags || repasseFlags.size===0){
+    listaRepasses.innerHTML='<p>Nenhum dia com repasse simulado.</p>';
+    return;
+  }
+  [...repasseFlags.entries()].sort().forEach(([dia,valor])=>{
+    const div=document.createElement('div');
+    div.innerHTML = `
+      <strong>${dia}</strong> - R$ ${valor.toFixed(2)}
+      <button data-dia="${dia}" class="irDia">Ir para o dia</button>
+      <button data-dia="${dia}" class="limparDia">Limpar</button>
+    `;
+    listaRepasses.appendChild(div);
+  });
+}
+
+btnRepasses.onclick=()=>{
+  renderListaRepasses();
+  modalRepasses.classList.remove('hidden');
+};
+
+btnFecharRepasses.onclick=()=>modalRepasses.classList.add('hidden');
+
+btnLimparTodos.onclick=()=>{
+  if(!confirm('Remover todos os repasses simulados?')) return;
+  repasseFlags = new Map();
+  localStorage.removeItem('repasse_flags_v1');
+  rebuildAndRender();
+  renderListaRepasses();
+};
+
+listaRepasses.onclick=(e)=>{
+  const dia=e.target.dataset.dia;
+  if(e.target.classList.contains('limparDia')){
+    repasseFlags.delete(dia);
+    localStorage.setItem('repasse_flags_v1', JSON.stringify(Object.fromEntries(repasseFlags)));
+    rebuildAndRender();
+    renderListaRepasses();
+  }
+  if(e.target.classList.contains('irDia')){
+    openDayDetails(dia);
+    modalRepasses.classList.add('hidden');
+  }
+};
