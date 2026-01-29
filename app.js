@@ -583,6 +583,44 @@ clearDayBtn.addEventListener("click", () => {
   render();
 });
 
+// Limpar TODOS os repasses simulados (flags) aplicados nos detalhes
+const resetRepassesBtn = document.getElementById("reset-repasses");
+if (resetRepassesBtn) {
+  resetRepassesBtn.addEventListener("click", () => {
+    const hasAny = repasseFlags && typeof repasseFlags.size === "number" ? repasseFlags.size > 0 : false;
+    if (!hasAny) {
+      alert("Nenhuma simulação de repasse está ativa.");
+      return;
+    }
+
+    if (!confirm("Deseja remover TODAS as simulações de repasse?")) return;
+
+    try {
+      localStorage.removeItem(REPASSE_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+
+    repasseFlags = new Map();
+
+    // Recalcula tudo sem os repasses
+    daySeries = buildDaySeries(rawRows, repasseFlags);
+    monthKeys = buildMonthKeys();
+
+    if (selectedMonthKey && !monthKeys.includes(selectedMonthKey)) {
+      selectedMonthKey = pickDefaultMonthKey();
+    }
+
+    populateMonthSelect();
+    updateQuinzenaChipLabels();
+
+    selectedDayKey = null;
+    closeModal(true);
+    render();
+  });
+}
+
+
 startInput.addEventListener("change", () => {
   setActiveChip("custom");
   activeFilter = "custom";
