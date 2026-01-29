@@ -58,17 +58,22 @@ let monthKeys = [];
 let selectedMonthKey = null;
 
 // Repasse (simulação)
-const REPASSE_STORAGE_KEY = "repasse_flags_v1";
-let repasseFlags = new Map();
+// Em vez de salvar apenas um "flag" por dia, salvamos o VALOR do repasse por dia.
+// Isso evita que o total exibido "mude" quando o saldo encadeado recalcula sugestões.
+const REPASSE_STORAGE_KEY = "repasse_values_v1";
+let repasseValues = new Map(); // dateKey -> number
 
-function loadRepasseFlags() {
+function loadRepasseValues() {
   try {
     const raw = localStorage.getItem(REPASSE_STORAGE_KEY);
     if (!raw) return new Map();
     const obj = JSON.parse(raw);
     const m = new Map();
     if (obj && typeof obj === "object") {
-      Object.keys(obj).forEach((k) => m.set(k, !!obj[k]));
+      Object.keys(obj).forEach((k) => {
+        const v = Number(obj[k]);
+        if (Number.isFinite(v) && v > 0) m.set(k, v);
+      });
     }
     return m;
   } catch {
@@ -76,11 +81,12 @@ function loadRepasseFlags() {
   }
 }
 
-function saveRepasseFlags() {
+function saveRepasseValues() {
   try {
     const obj = {};
-    repasseFlags.forEach((v, k) => {
-      if (v) obj[k] = true;
+    repasseValues.forEach((v, k) => {
+      const n = Number(v);
+      if (Number.isFinite(n) && n > 0) obj[k] = n;
     });
     localStorage.setItem(REPASSE_STORAGE_KEY, JSON.stringify(obj));
   } catch {
@@ -203,7 +209,7 @@ function parseCSV(text) {
 }
 
 // ===== build day series =====
-function buildDaySeries(rows, flagsMap) {
+function buildDaySeries(rows, valuesMap) {
   const byDay = new Map();
   for (const r of rows) {
     if (!byDay.has(r.dateKey)) byDay.set(r.dateKey, []);
@@ -250,8 +256,8 @@ function buildDaySeries(rows, flagsMap) {
       repasseSuggested = Math.ceil(comMargem / 1000) * 1000;
     }
 
-    const apply = !!(flagsMap && flagsMap.get(key)) && repasseSuggested > 0;
-    const repasseApplied = apply ? repasseSuggested : 0;
+    const stored = valuesMap ? Number(valuesMap.get(key)) : 0;
+    const repasseApplied = Number.isFinite(stored) && stored > 0 ? stored : 0;
 
     const entradasDia = entradasOrig + repasseApplied;
     const saldoFinal = saldoInicial + entradasDia - saidasDia;
@@ -441,7 +447,7 @@ function closeRepassesModal() {
 
 function recalcAfterRepasseChange(options = {}) {
   const { updateDayModal = true } = options;
-  daySeries = buildDaySeries(rawRows, repasseFlags);
+  daySeries = buildDaySeries(rawRows, repasseValues);
   monthKeys = buildMonthKeys();
 
   if (selectedMonthKey && !monthKeys.includes(selectedMonthKey)) {
@@ -461,15 +467,20 @@ function recalcAfterRepasseChange(options = {}) {
 
 function getSimulatedRepassesForView() {
   const filtered = getFilteredDaySeries();
+
   return filtered
-    .filter((d) => !!repasseFlags.get(d.dateKey) && d.repasseSuggested > 0)
-    .map((d) => ({
-      date: d.date,
-      dateKey: d.dateKey,
-      value: d.repasseSuggested,
-    }))
+    .map((d) => {
+      const v = Number(repasseValues.get(d.dateKey));
+      return {
+        date: d.date,
+        dateKey: d.dateKey,
+        value: Number.isFinite(v) && v > 0 ? v : 0,
+      };
+    })
+    .filter((x) => x.value > 0)
     .sort((a, b) => a.date - b.date);
 }
+
 
 function renderRepassesModal() {
   if (!repassesList || !repassesCount || !repassesTotal || !repassesEmpty) return;
@@ -536,8 +547,8 @@ function renderRepassesModal() {
     clearBtn.textContent = "Limpar";
     clearBtn.onclick = (e) => {
       if (e) e.stopPropagation();
-      repasseFlags.delete(it.dateKey);
-      saveRepasseFlags();
+      repasseValues.delete(it.dateKey);
+      saveRepasseValues();
       recalcAfterRepasseChange({ updateDayModal: false });
       renderRepassesModal();
     };
@@ -581,26 +592,15 @@ function renderModalForDay(day) {
     modalRepasseWrap.style.display = "flex";
 
     if (modalRepasseToggle) {
-      modalRepasseToggle.checked = !!repasseFlags.get(day.dateKey);
+      modalRepasseToggle.checked = repasseValues.has(day.dateKey);
       modalRepasseToggle.onchange = () => {
-        repasseFlags.set(day.dateKey, !!modalRepasseToggle.checked);
-        saveRepasseFlags();
-
-        daySeries = buildDaySeries(rawRows, repasseFlags);
-        monthKeys = buildMonthKeys();
-
-        // mantém o mês selecionado, se ainda existir
-        if (selectedMonthKey && !monthKeys.includes(selectedMonthKey)) {
-          selectedMonthKey = pickDefaultMonthKey();
+        if (modalRepasseToggle.checked) {
+          if (day.repasseSuggested > 0) repasseValues.set(day.dateKey, day.repasseSuggested);
+        } else {
+          repasseValues.delete(day.dateKey);
         }
-
-        populateMonthSelect();
-        updateQuinzenaChipLabels();
-        render();
-
-        const filtered = getFilteredDaySeries();
-        const selected = getSelectedDayIfAny(filtered);
-        if (selected) renderModalForDay(selected);
+        saveRepasseValues();
+        recalcAfterRepasseChange();
       };
     }
   } else {
@@ -769,8 +769,8 @@ if (repassesClearAll) {
     if (items.length === 0) return;
     const ok = confirm("Limpar todos os repasses simulados?");
     if (!ok) return;
-    repasseFlags = new Map();
-    saveRepasseFlags();
+    repasseValues = new Map();
+    saveRepasseValues();
     recalcAfterRepasseChange();
     renderRepassesModal();
   });
@@ -792,9 +792,9 @@ async function init() {
     const text = await res.text();
     rawRows = parseCSV(text);
 
-    repasseFlags = loadRepasseFlags();
+    repasseValues = loadRepasseValues();
 
-    daySeries = buildDaySeries(rawRows, repasseFlags);
+    daySeries = buildDaySeries(rawRows, repasseValues);
     anchorDate = pickAnchorDate();
 
     monthKeys = buildMonthKeys();
