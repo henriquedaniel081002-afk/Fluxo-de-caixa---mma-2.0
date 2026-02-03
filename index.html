@@ -17,7 +17,7 @@
 
         <div class="connection" id="connection-status" aria-live="polite">
           <span class="connection__dot"></span>
-          <span id="connection-text">Conectando à planilha...</span>
+          <span id="connection-text">Desconectado</span>
         </div>
       </header>
 
@@ -35,22 +35,7 @@
               <span>Mês</span>
               <select id="month-select" class="select" aria-label="Selecionar mês"></select>
             </label>
-
-            <label class="field">
-              <span>Início</span>
-              <input type="date" id="filter-start" />
-            </label>
-
-            <label class="field">
-              <span>Fim</span>
-              <input type="date" id="filter-end" />
-            </label>
-
-            <button class="chip chip--ghost" data-filter="custom" type="button">
-              Período personalizado
-            </button>
-
-            <button
+<button
               class="chip chip--ghost"
               id="clear-day-filter"
               type="button"

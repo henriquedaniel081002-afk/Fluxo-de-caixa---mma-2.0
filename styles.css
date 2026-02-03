@@ -78,15 +78,17 @@ h1 {
 .connection {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  gap: 6px;
+  padding: 6px 10px;
   border-radius: 999px;
   background: rgba(20, 20, 22, 0.96);
   border: 1px solid var(--stroke);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
   color: var(--muted);
-  min-width: 260px;
+  min-width: 0;
   justify-content: center;
+
+  font-size: 12px;
 }
 
 .connection__dot {
@@ -601,6 +603,24 @@ input[type="date"]:focus,
     display: inline-block;
     min-width: 96px;
   }
+
+  /* Mobile fixes: evitar corte de texto no modal de repasses e no toggle */
+  .repasse__toggle{
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .repasse__toggle span{
+    white-space: normal;
+    line-height: 1.2;
+  }
+  .repasses__head .pill strong{
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    max-width: none;
+    word-break: break-word;
+  }
+
 }
 
 

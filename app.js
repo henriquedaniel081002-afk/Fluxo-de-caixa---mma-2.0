@@ -9,8 +9,6 @@ const connectionText = document.getElementById("connection-text");
 const totalEntradasEl = document.getElementById("total-entradas");
 const totalSaidasEl = document.getElementById("total-saidas");
 
-const startInput = document.getElementById("filter-start");
-const endInput = document.getElementById("filter-end");
 
 const dailySummaryBody = document.getElementById("daily-summary");
 
@@ -303,6 +301,10 @@ function pickDefaultMonthKey() {
 
 function populateMonthSelect() {
   monthSelect.innerHTML = "";
+  const optAll = document.createElement("option");
+  optAll.value = "";
+  optAll.textContent = "Todos";
+  monthSelect.appendChild(optAll);
   for (const mk of monthKeys) {
     const opt = document.createElement("option");
     opt.value = mk;
@@ -354,6 +356,14 @@ function getFilteredDaySeries() {
   if (!daySeries.length) return [];
   let resultKeys = null;
 
+  if (activeFilter === "month") {
+    if (!selectedMonthKey) {
+      resultKeys = daySeries.map((d) => d.dateKey);
+    } else {
+      resultKeys = getMonthDays(selectedMonthKey).map((d) => d.dateKey);
+    }
+  }
+
   if (activeFilter === "quinzena-1" || activeFilter === "quinzena-2") {
     const mk = selectedMonthKey || pickDefaultMonthKey();
     const { q1, q2 } = getQuinzenaSlices(mk);
@@ -374,19 +384,6 @@ function getFilteredDaySeries() {
     const startIdx = idxToday >= 0 ? idxToday : daySeries.length - 1;
     const slice = daySeries.slice(startIdx, startIdx + 7);
     resultKeys = slice.map((d) => d.dateKey);
-  }
-
-  if (activeFilter === "custom") {
-    const s = startInput.value ? new Date(startInput.value + "T00:00:00") : null;
-    const e = endInput.value ? new Date(endInput.value + "T00:00:00") : null;
-
-    const filtered = daySeries.filter((d) => {
-      if (s && d.date < s) return false;
-      if (e && d.date > e) return false;
-      return true;
-    });
-
-    resultKeys = filtered.map((d) => d.dateKey);
   }
 
   if (!resultKeys) {
@@ -716,7 +713,6 @@ function render() {
 // ===== Events =====
 chips.forEach((b) => b.addEventListener("click", () => applyFilter(b.dataset.filter)));
 
-document.querySelector('.chip[data-filter="custom"]').addEventListener("click", () => applyFilter("custom"));
 
 clearDayBtn.addEventListener("click", () => {
   selectedDayKey = null;
@@ -724,27 +720,15 @@ clearDayBtn.addEventListener("click", () => {
   render();
 });
 
-startInput.addEventListener("change", () => {
-  setActiveChip("custom");
-  activeFilter = "custom";
-  render();
-});
-
-endInput.addEventListener("change", () => {
-  setActiveChip("custom");
-  activeFilter = "custom";
-  render();
-});
 
 monthSelect.addEventListener("change", () => {
-  selectedMonthKey = monthSelect.value || selectedMonthKey;
+  selectedMonthKey = monthSelect.value || null;
   updateQuinzenaChipLabels();
-
-  if (activeFilter === "quinzena-1" || activeFilter === "quinzena-2") {
-    selectedDayKey = null;
-    closeModal(true);
-    render();
-  }
+  selectedDayKey = null;
+  closeModal(true);
+  activeFilter = "month";
+  setActiveChip(null);
+  render();
 });
 
 // Modal controls
@@ -785,7 +769,7 @@ document.addEventListener("keydown", (e) => {
 // ===== INIT =====
 async function init() {
   try {
-    setConnection(null, "Conectando à planilha...");
+    setConnection(null, "Desconectado");
     const res = await fetch(CSV_URL, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
@@ -805,11 +789,11 @@ async function init() {
     setActiveChip("today");
     activeFilter = "today";
 
-    setConnection("ok", "Dados sincronizados com a planilha");
+    setConnection("ok", "Conectado");
     render();
   } catch (err) {
     console.error(err);
-    setConnection("err", "Erro ao carregar dados da planilha");
+    setConnection("err", "Desconectado");
   }
 }
 
