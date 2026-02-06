@@ -593,11 +593,11 @@ input[type="date"]:focus,
     color: var(--muted);
   }
   #summary-table tbody td:nth-child(2)::before {
-    content: "Entradas: ";
+    content: "Saldo inicial + Entradas: ";
     color: var(--muted);
   }
   #summary-table tbody td:nth-child(3)::before {
-    content: "Saídas: ";
+    content: "Pagamentos: ";
     color: var(--muted);
   }
   #summary-table tbody td:nth-child(4)::before {
