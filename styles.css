@@ -651,6 +651,28 @@ input[type="date"]:focus,
 }
 
 
+
+
+/* Boletos a receber (-10% previsão) */
+.chk--inline{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+  user-select:none;
+}
+.chk--inline input{
+  width:16px;
+  height:16px;
+  accent-color: var(--orange);
+}
+.chk__hint{
+  font-size: inherit;
+  color: var(--muted);
+  margin-left:6px;
+  white-space:nowrap;
+}
+
 /* ===== REPASSES SIMULADOS (modal) ===== */
 .repasses__head{
   display:flex;

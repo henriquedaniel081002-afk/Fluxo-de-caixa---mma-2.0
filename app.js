@@ -58,6 +58,50 @@ let selectedMonthKey = null;
 // Repasse (simulação)
 // Em vez de salvar apenas um "flag" por dia, salvamos o VALOR do repasse por dia.
 // Isso evita que o total exibido "mude" quando o saldo encadeado recalcula sugestões.
+const BOLETOS_DISCOUNT_STORAGE_KEY = "boletos_discount_v1";
+let boletosDiscountDays = new Set(); // dateKey
+
+function loadBoletosDiscountDays() {
+  try {
+    const raw = localStorage.getItem(BOLETOS_DISCOUNT_STORAGE_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return new Set();
+    const s = new Set();
+    arr.forEach((k) => {
+      if (typeof k === "string" && k) s.add(k);
+    });
+    return s;
+  } catch {
+    return new Set();
+  }
+}
+
+function saveBoletosDiscountDays() {
+  try {
+    localStorage.setItem(BOLETOS_DISCOUNT_STORAGE_KEY, JSON.stringify(Array.from(boletosDiscountDays)));
+  } catch {}
+}
+
+function normalizeText(v) {
+  return (v || "")
+    .toString()
+    .trim()
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function applyBoletosDiscountIfNeeded(dateKey, descricao, valor) {
+  const v = Number(valor) || 0;
+  if (!dateKey) return v;
+  if (!boletosDiscountDays || !(boletosDiscountDays instanceof Set)) return v;
+  if (!boletosDiscountDays.has(dateKey)) return v;
+  if (normalizeText(descricao) === "BOLETOS A RECEBER") return v * 0.9;
+  return v;
+}
+
+
 const REPASSE_STORAGE_KEY = "repasse_values_v1";
 let repasseValues = new Map(); // dateKey -> number
 
@@ -234,11 +278,11 @@ function buildDaySeries(rows, valuesMap) {
 
     const entradasOrig = dayRows
       .filter((x) => (x.tipo || "").toLowerCase() === "entrada" && (x.descricao || "").toUpperCase() !== "SALDO")
-      .reduce((acc, x) => acc + x.valor, 0);
+      .reduce((acc, x) => acc + applyBoletosDiscountIfNeeded(key, x.descricao, x.valor), 0);
 
     const saidasDia = dayRows
       .filter((x) => (x.tipo || "").toLowerCase() === "saída" || (x.tipo || "").toLowerCase() === "saida")
-      .reduce((acc, x) => acc + x.valor, 0);
+      .reduce((acc, x) => acc + applyBoletosDiscountIfNeeded(key, x.descricao, x.valor), 0);
 
     // Repasse necessário (sugestão): aparece quando o caixa disponível no dia não cobre as saídas.
     // Condição: (saldoInicial + entradasOrig) < saidasDia
@@ -566,24 +610,60 @@ function renderModalForDay(day) {
   modalTitle.textContent = "Detalhes do dia";
   modalSubtitle.textContent = formatDateBR(day.date);
 
+  const BOL_LABEL = "BOLETOS A RECEBER";
+  const hasDiscount = boletosDiscountDays.has(day.dateKey);
+
+  // Captura valor original de BOLETOS A RECEBER (se existir)
+  const boletosRow = day.rows.find(
+    (x) =>
+      (x.tipo || "").toLowerCase() === "entrada" &&
+      normalizeText(x.descricao) === normalizeText(BOL_LABEL)
+  );
+  const boletosValor = boletosRow ? Number(boletosRow.valor) : 0;
+
   const entradaRows = [
     { descricao: "SALDO INICIAL", valor: day.saldoInicial, strong: true },
-    ...(day.repasseApplied > 0 ? [{ descricao: "REPASSE (SIMULADO)", valor: day.repasseApplied, strong: true, simulated: true }] : []),
+    ...(day.repasseApplied > 0
+      ? [
+          {
+            descricao: "REPASSE (SIMULADO)",
+            valor: day.repasseApplied,
+            strong: true,
+            simulated: true,
+          },
+        ]
+      : []),
     ...day.rows
-      .filter((x) => (x.tipo || "").toLowerCase() === "entrada" && (x.descricao || "").toUpperCase() !== "SALDO")
-      .map((x) => ({ descricao: x.descricao, valor: x.valor, strong: false })),
+      .filter(
+        (x) =>
+          (x.tipo || "").toLowerCase() === "entrada" &&
+          normalizeText(x.descricao) !== "SALDO"
+      )
+      .map((x) => {
+        const v = applyBoletosDiscountIfNeeded(day.dateKey, x.descricao, x.valor);
+        const isBoletos = normalizeText(x.descricao) === normalizeText(BOL_LABEL);
+        return {
+          descricao: x.descricao,
+          valor: v,
+          strong: false,
+          isBoletos,
+        };
+      }),
   ];
 
   const saidaRows = day.rows
     .filter((x) => (x.tipo || "").toLowerCase() === "saída" || (x.tipo || "").toLowerCase() === "saida")
     .map((x) => ({ descricao: x.descricao, valor: x.valor }));
 
-  modalTotalEntradas.textContent = brl.format(day.entradasResumo);
+  // Total exibido (simulação): já vem ajustado pela previsão (se ativa)
+  const totalEntradasView = day.entradasResumo || 0;
+
+  modalTotalEntradas.textContent = brl.format(totalEntradasView);
   modalTotalSaidas.textContent = brl.format(day.saidasDia);
 
   // Repasse necessário (sugestão) + simulação:
-// - Sugestão aparece quando (saldoInicial + entradasOrig) < saidasDia
-// - Se o toggle estiver ativo, o repasse é aplicado como entrada adicional do dia e o fluxo é recalculado a partir dele.
+  // - Sugestão aparece quando (saldoInicial + entradasOrig) < saidasDia
+  // - Se o toggle estiver ativo, o repasse é aplicado como entrada adicional do dia e o fluxo é recalculado a partir dele.
   if (day.repasseSuggested > 0) {
     modalRepasse.textContent = brl.format(day.repasseSuggested);
     modalRepasseWrap.style.display = "flex";
@@ -612,15 +692,48 @@ function renderModalForDay(day) {
     entradaRows.length === 0
       ? `<div class="list__empty">Sem entradas neste dia.</div>`
       : entradaRows
-          .map(
-            (r) => `
+          .map((r) => {
+            if (r.isBoletos) {
+              const chkId = `boletos-discount-${day.dateKey}`;
+              return `
+                <div class="list__row">
+                  <div class="list__desc">
+                    <label class="chk chk--inline" for="${chkId}">
+                      <input type="checkbox" id="${chkId}" ${hasDiscount ? "checked" : ""} />
+                      <span>${r.descricao}</span>
+                      <span class="chk__hint">-10% (previsão)</span>
+                    </label>
+                  </div>
+                  <div class="list__amt list__amt--pos">${brl.format(r.valor)}</div>
+                </div>
+              `;
+            }
+
+            return `
               <div class="list__row">
                 <div class="list__desc">${r.strong ? `<strong>${r.descricao}</strong>` : r.descricao}</div>
                 <div class="list__amt list__amt--pos">${brl.format(r.valor)}</div>
               </div>
-            `
-          )
+            `;
+          })
           .join("");
+
+  // Listener do checkbox (se existir)
+  if (boletosValor > 0) {
+    const chk = modalEntries.querySelector(`input[id="boletos-discount-${day.dateKey}"]`);
+    if (chk) {
+      chk.onchange = () => {
+        if (chk.checked) {
+          boletosDiscountDays.add(day.dateKey);
+        } else {
+          boletosDiscountDays.delete(day.dateKey);
+        }
+        saveBoletosDiscountDays();
+        // Recalcula tudo (cards, tabelas e modal), sem alterar o Google Sheets
+        recalcAfterRepasseChange({ updateDayModal: true });
+      };
+    }
+  }
 
   modalExpenses.innerHTML =
     saidaRows.length === 0
@@ -777,6 +890,8 @@ async function init() {
     rawRows = parseCSV(text);
 
     repasseValues = loadRepasseValues();
+
+    boletosDiscountDays = loadBoletosDiscountDays();
 
     daySeries = buildDaySeries(rawRows, repasseValues);
     anchorDate = pickAnchorDate();
