@@ -14,6 +14,7 @@ const dailySummaryBody = document.getElementById("daily-summary");
 
 const clearDayBtn = document.getElementById("clear-day-filter");
 const openRepassesBtn = document.getElementById("open-repasses-modal");
+const clearBoletosDiscountsBtn = document.getElementById("clear-boletos-discounts");
 
 // Repasses modal elements
 const repassesModal = document.getElementById("repasses-modal");
@@ -832,6 +833,16 @@ clearDayBtn.addEventListener("click", () => {
   closeModal(true);
   render();
 });
+
+if (clearBoletosDiscountsBtn) {
+  clearBoletosDiscountsBtn.addEventListener("click", () => {
+    // Remove todas as simulações de -10% (somente visual)
+    boletosDiscountDays = new Set();
+    saveBoletosDiscountDays();
+    recalcAfterRepasseChange({ updateDayModal: true });
+  });
+}
+
 
 
 monthSelect.addEventListener("change", () => {
