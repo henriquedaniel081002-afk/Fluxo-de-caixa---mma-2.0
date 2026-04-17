@@ -1,925 +1,324 @@
-// ===== CONFIG =====
-const CSV_URL =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vSPxmvS4jgdO1ik60I4wxlYSNIDx7LTeAkLUcJe6r105xYLixIhhADN7LmzSG0YfxOWR4zB1BKpfO1Z/pub?gid=0&single=true&output=csv";
+const DATA_URL = "./consolidado.json";
 
-// ===== DOM =====
-const connectionStatus = document.getElementById("connection-status");
-const connectionText = document.getElementById("connection-text");
+const monthFormatter = new Intl.DateTimeFormat("pt-BR", { month: "long" });
 
-const totalEntradasEl = document.getElementById("total-entradas");
-const totalSaidasEl = document.getElementById("total-saidas");
+const dom = {
+  yearFilter: document.getElementById("yearFilter"),
+  monthFilter: document.getElementById("monthFilter"),
+  kpiAdherence: document.getElementById("kpiAdherence"),
+  kpiProduced: document.getElementById("kpiProduced"),
+  kpiDailyAverage: document.getElementById("kpiDailyAverage"),
+  chartCanvas: document.getElementById("productionChart"),
+};
 
+const state = {
+  today: getTodayLocal(),
+  rows: [],
+  selectedYear: null,
+  selectedMonth: null,
+  chart: null,
+};
 
-const dailySummaryBody = document.getElementById("daily-summary");
-
-const clearDayBtn = document.getElementById("clear-day-filter");
-const openRepassesBtn = document.getElementById("open-repasses-modal");
-const clearBoletosDiscountsBtn = document.getElementById("clear-boletos-discounts");
-
-// Repasses modal elements
-const repassesModal = document.getElementById("repasses-modal");
-const repassesOverlay = document.getElementById("repasses-overlay");
-const repassesClose = document.getElementById("repasses-close");
-const repassesSummary = document.getElementById("repasses-summary");
-const repassesCount = document.getElementById("repasses-count");
-const repassesTotal = document.getElementById("repasses-total");
-const repassesEmpty = document.getElementById("repasses-empty");
-const repassesList = document.getElementById("repasses-list");
-const repassesClearAll = document.getElementById("repasses-clear-all");
-const monthSelect = document.getElementById("month-select");
-
-const chips = Array.from(document.querySelectorAll(".chip[data-filter]"));
-const chipQ1 = document.querySelector('.chip[data-filter="quinzena-1"]');
-const chipQ2 = document.querySelector('.chip[data-filter="quinzena-2"]');
-
-// Modal DOM
-const modal = document.getElementById("day-modal");
-const modalOverlay = document.getElementById("modal-overlay");
-const modalClose = document.getElementById("modal-close");
-const modalTitle = document.getElementById("modal-title");
-const modalSubtitle = document.getElementById("modal-subtitle");
-const modalTotalEntradas = document.getElementById("modal-total-entradas");
-const modalTotalSaidas = document.getElementById("modal-total-saidas");
-const modalRepasseWrap = document.getElementById("modal-repasse-wrap");
-const modalRepasse = document.getElementById("modal-repasse");
-const modalRepasseToggle = document.getElementById("modal-repasse-toggle");
-const modalEntries = document.getElementById("modal-entries");
-const modalExpenses = document.getElementById("modal-expenses");
-
-// ===== STATE =====
-let rawRows = [];
-let daySeries = [];
-let anchorDate = null;
-let activeFilter = "today";
-let selectedDayKey = null;
-
-let monthKeys = [];
-let selectedMonthKey = null;
-
-// Repasse (simulação)
-// Em vez de salvar apenas um "flag" por dia, salvamos o VALOR do repasse por dia.
-// Isso evita que o total exibido "mude" quando o saldo encadeado recalcula sugestões.
-const BOLETOS_DISCOUNT_STORAGE_KEY = "boletos_discount_v1";
-let boletosDiscountDays = new Set(); // dateKey
-
-function loadBoletosDiscountDays() {
-  try {
-    const raw = localStorage.getItem(BOLETOS_DISCOUNT_STORAGE_KEY);
-    if (!raw) return new Set();
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr)) return new Set();
-    const s = new Set();
-    arr.forEach((k) => {
-      if (typeof k === "string" && k) s.add(k);
-    });
-    return s;
-  } catch {
-    return new Set();
-  }
-}
-
-function saveBoletosDiscountDays() {
-  try {
-    localStorage.setItem(BOLETOS_DISCOUNT_STORAGE_KEY, JSON.stringify(Array.from(boletosDiscountDays)));
-  } catch {}
-}
-
-function normalizeText(v) {
-  return (v || "")
-    .toString()
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function applyBoletosDiscountIfNeeded(dateKey, descricao, valor) {
-  const v = Number(valor) || 0;
-  if (!dateKey) return v;
-  if (!boletosDiscountDays || !(boletosDiscountDays instanceof Set)) return v;
-  if (!boletosDiscountDays.has(dateKey)) return v;
-  if (normalizeText(descricao) === "BOLETOS A RECEBER") return v * 0.9;
-  return v;
-}
-
-
-const REPASSE_STORAGE_KEY = "repasse_values_v1";
-let repasseValues = new Map(); // dateKey -> number
-
-function loadRepasseValues() {
-  try {
-    const raw = localStorage.getItem(REPASSE_STORAGE_KEY);
-    if (!raw) return new Map();
-    const obj = JSON.parse(raw);
-    const m = new Map();
-    if (obj && typeof obj === "object") {
-      Object.keys(obj).forEach((k) => {
-        const v = Number(obj[k]);
-        if (Number.isFinite(v) && v > 0) m.set(k, v);
-      });
+class ProductionDataService {
+  static async loadData() {
+    const response = await fetch(DATA_URL);
+    if (!response.ok) {
+      throw new Error(`Falha ao carregar JSON consolidado: ${response.status}`);
     }
-    return m;
-  } catch {
-    return new Map();
+
+    const raw = await response.json();
+    if (!Array.isArray(raw)) {
+      throw new Error("O JSON consolidado deve ser um array de registros.");
+    }
+
+    return raw.map(ProductionDataService.normalizeRecord);
+  }
+
+  static normalizeRecord(item) {
+    return {
+      serie: String(item.serie || "").trim(),
+      linha: item.linha || "",
+      potencia: item.potencia || "",
+      setorProgramado: item.setorProgramado || "",
+      setorProduzido: item.setorProduzido || "",
+      dataProg: parseDate(item.dataProg),
+      dataProduzida: parseDate(item.dataProduzida),
+    };
   }
 }
 
-function saveRepasseValues() {
-  try {
-    const obj = {};
-    repasseValues.forEach((v, k) => {
-      const n = Number(v);
-      if (Number.isFinite(n) && n > 0) obj[k] = n;
+class MetricsService {
+  static getPeriodDates(year, month, today) {
+    const start = new Date(year, month - 1, 1);
+    const lastDayOfMonth = new Date(year, month, 0);
+    const end = lastDayOfMonth <= today ? lastDayOfMonth : today;
+    const hasValidRange = start <= end;
+
+    return { start, end, hasValidRange };
+  }
+
+  static filterProgrammedInPeriod(rows, start, end) {
+    return rows.filter((row) => row.dataProg && row.dataProg >= start && row.dataProg <= end);
+  }
+
+  static filterProducedInPeriod(rows, start, end) {
+    return rows.filter(
+      (row) => row.dataProduzida && row.dataProduzida >= start && row.dataProduzida <= end
+    );
+  }
+
+  static calculateKpis(rows, year, month, today) {
+    const { start, end, hasValidRange } = MetricsService.getPeriodDates(year, month, today);
+
+    if (!hasValidRange) {
+      return {
+        adherence: 0,
+        producedCount: 0,
+        dailyAverage: 0,
+        periodDays: 0,
+        programmedCount: 0,
+      };
+    }
+
+    const programmed = MetricsService.filterProgrammedInPeriod(rows, start, end);
+    const produced = MetricsService.filterProducedInPeriod(rows, start, end);
+
+    const programmedCount = programmed.length;
+    const producedCount = produced.length;
+
+    const adherence = programmedCount > 0 ? (producedCount / programmedCount) * 100 : 0;
+
+    const periodDays = dateDiffInDays(start, end) + 1;
+    const dailyAverage = periodDays > 0 ? producedCount / periodDays : 0;
+
+    return {
+      adherence,
+      producedCount,
+      dailyAverage,
+      periodDays,
+      programmedCount,
+    };
+  }
+
+  static buildDailySeries(rows, year, month, today) {
+    const { start, end, hasValidRange } = MetricsService.getPeriodDates(year, month, today);
+
+    if (!hasValidRange) {
+      return { labels: [], programmedData: [], producedData: [] };
+    }
+
+    const labels = [];
+    const programmedByDate = new Map();
+    const producedByDate = new Map();
+
+    for (let current = new Date(start); current <= end; current.setDate(current.getDate() + 1)) {
+      const key = toDateKey(current);
+      labels.push(key);
+      programmedByDate.set(key, 0);
+      producedByDate.set(key, 0);
+    }
+
+    rows.forEach((row) => {
+      if (row.dataProg) {
+        const key = toDateKey(row.dataProg);
+        if (programmedByDate.has(key)) {
+          programmedByDate.set(key, programmedByDate.get(key) + 1);
+        }
+      }
+
+      if (row.dataProduzida && row.dataProduzida <= today) {
+        const key = toDateKey(row.dataProduzida);
+        if (producedByDate.has(key)) {
+          producedByDate.set(key, producedByDate.get(key) + 1);
+        }
+      }
     });
-    localStorage.setItem(REPASSE_STORAGE_KEY, JSON.stringify(obj));
-  } catch {
-    // ignore
+
+    return {
+      labels,
+      programmedData: labels.map((label) => programmedByDate.get(label) || 0),
+      producedData: labels.map((label) => producedByDate.get(label) || 0),
+    };
   }
 }
 
-const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-
-// ===== HELPERS =====
-function setConnection(state, text) {
-  connectionStatus.classList.remove("connection--ok", "connection--err");
-  if (state === "ok") connectionStatus.classList.add("connection--ok");
-  if (state === "err") connectionStatus.classList.add("connection--err");
-  connectionText.textContent = text;
-}
-
-function parseBRL(value) {
-  if (value == null) return 0;
-  const s = String(value).trim();
-  if (!s) return 0;
-  const cleaned = s.replace(/\s/g, "").replace("R$", "").replace(/\./g, "").replace(",", ".");
-  const n = Number(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function parseDateBR(value) {
-  const s = String(value || "").trim();
-  const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (!m) return null;
-  const dd = Number(m[1]);
-  const mm = Number(m[2]) - 1;
-  const yyyy = Number(m[3]);
-  const d = new Date(yyyy, mm, dd);
-  if (Number.isNaN(d.getTime())) return null;
-  return d;
-}
-
-function toKey(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
-function toMonthKey(d) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${yyyy}-${mm}`;
-}
-
-function formatDateBR(d) {
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
-}
-
-function sameDay(a, b) {
-  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
-}
-
-function todayLocal() {
+function getTodayLocal() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate());
 }
 
-function csvSplitLine(line) {
-  const out = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"' && line[i + 1] === '"') {
-      cur += '"';
-      i++;
-      continue;
-    }
-    if (ch === '"') {
-      inQ = !inQ;
-      continue;
-    }
-    if (ch === "," && !inQ) {
-      out.push(cur);
-      cur = "";
-      continue;
-    }
-    cur += ch;
-  }
-  out.push(cur);
-  return out.map((v) => v.trim());
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function parseCSV(text) {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length < 2) return [];
-
-  const headers = csvSplitLine(lines[0]).map((h) => h.toLowerCase());
-  const idxData = headers.findIndex((h) => h.includes("data"));
-  const idxDesc = headers.findIndex((h) => h.includes("descr"));
-  const idxValor = headers.findIndex((h) => h.includes("valor"));
-  const idxTipo = headers.findIndex((h) => h.includes("tipo"));
-
-  const rows = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cols = csvSplitLine(lines[i]);
-    const d = parseDateBR(cols[idxData]);
-    if (!d) continue;
-
-    rows.push({
-      date: d,
-      dateKey: toKey(d),
-      monthKey: toMonthKey(d),
-      descricao: (cols[idxDesc] || "").trim(),
-      valor: parseBRL(cols[idxValor]),
-      tipo: (cols[idxTipo] || "").trim(),
-    });
-  }
-  return rows;
+function toDateKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
-// ===== build day series =====
-function buildDaySeries(rows, valuesMap) {
-  const byDay = new Map();
-  for (const r of rows) {
-    if (!byDay.has(r.dateKey)) byDay.set(r.dateKey, []);
-    byDay.get(r.dateKey).push(r);
-  }
-
-  const keys = Array.from(byDay.keys()).sort();
-  const series = [];
-  let prevSaldoFinalForNext = 0;
-
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    const dayRows = byDay.get(key).slice().sort((a, b) => a.descricao.localeCompare(b.descricao));
-    const dayDate = dayRows[0].date;
-
-    let saldoInicial = 0;
-    if (i === 0) {
-      const saldoRow = dayRows.find((x) => (x.descricao || "").toUpperCase() === "SALDO");
-      saldoInicial = saldoRow ? saldoRow.valor : 0;
-    } else {
-      // Carrega o saldo final do dia anterior, mesmo se for negativo.
-      saldoInicial = prevSaldoFinalForNext;
-    }
-
-    const entradasOrig = dayRows
-      .filter((x) => (x.tipo || "").toLowerCase() === "entrada" && (x.descricao || "").toUpperCase() !== "SALDO")
-      .reduce((acc, x) => acc + applyBoletosDiscountIfNeeded(key, x.descricao, x.valor), 0);
-
-    const saidasDia = dayRows
-      .filter((x) => (x.tipo || "").toLowerCase() === "saída" || (x.tipo || "").toLowerCase() === "saida")
-      .reduce((acc, x) => acc + applyBoletosDiscountIfNeeded(key, x.descricao, x.valor), 0);
-
-    // Repasse necessário (sugestão): aparece quando o caixa disponível no dia não cobre as saídas.
-    // Condição: (saldoInicial + entradasOrig) < saidasDia
-    // Cálculo:
-    //   base = saidasDia - (saldoInicial + entradasOrig)
-    //   comMargem = base * 1.10
-    //   exibido = arredonda para cima ao milhar (ceil)
-    const caixaDisponivel = saldoInicial + entradasOrig;
-    let repasseSuggested = 0;
-    if (caixaDisponivel < saidasDia) {
-      const base = Math.max(0, saidasDia - caixaDisponivel);
-      const comMargem = base * 1.10;
-      repasseSuggested = Math.ceil(comMargem / 1000) * 1000;
-    }
-
-    const stored = valuesMap ? Number(valuesMap.get(key)) : 0;
-    const repasseApplied = Number.isFinite(stored) && stored > 0 ? stored : 0;
-
-    const entradasDia = entradasOrig + repasseApplied;
-    const saldoFinal = saldoInicial + entradasDia - saidasDia;
-    prevSaldoFinalForNext = saldoFinal;
-
-    series.push({
-      date: dayDate,
-      dateKey: key,
-      monthKey: toMonthKey(dayDate),
-      saldoInicial,
-      entradasDia,
-      entradasOrig,
-      saidasDia,
-      entradasResumo: saldoInicial + entradasDia,
-      saldoFinal,
-      repasseSuggested,
-      repasseApplied,
-      rows: dayRows,
-    });
-  }
-
-  return series;
+function dateDiffInDays(start, end) {
+  const msPerDay = 24 * 60 * 60 * 1000;
+  return Math.floor((end - start) / msPerDay);
 }
 
-// ===== Month select + quinzena =====
-function monthLabelPT(monthKey) {
-  const [y, m] = monthKey.split("-").map(Number);
-  const d = new Date(y, (m || 1) - 1, 1);
-  let label = d.toLocaleString("pt-BR", { month: "long" });
-  label = label.charAt(0).toUpperCase() + label.slice(1);
-  return label;
+function formatLabelDate(isoDate) {
+  const [year, month, day] = isoDate.split("-");
+  return `${day}/${month}`;
 }
 
-function buildMonthKeys() {
-  const set = new Set(daySeries.map((d) => d.monthKey));
-  return Array.from(set).sort();
-}
-
-function pickDefaultMonthKey() {
-  if (!daySeries.length) return null;
-  return daySeries[daySeries.length - 1].monthKey;
-}
-
-function populateMonthSelect() {
-  monthSelect.innerHTML = "";
-  const optAll = document.createElement("option");
-  optAll.value = "";
-  optAll.textContent = "Todos";
-  monthSelect.appendChild(optAll);
-  for (const mk of monthKeys) {
-    const opt = document.createElement("option");
-    opt.value = mk;
-    opt.textContent = monthLabelPT(mk);
-    monthSelect.appendChild(opt);
-  }
-  if (!selectedMonthKey && monthKeys.length) selectedMonthKey = monthKeys[monthKeys.length - 1];
-  monthSelect.value = selectedMonthKey || "";
-}
-
-function getMonthDays(monthKey) {
-  return daySeries
-    .filter((d) => d.monthKey === monthKey)
-    .slice()
-    .sort((a, b) => a.dateKey.localeCompare(b.dateKey));
-}
-
-function getQuinzenaSlices(monthKey) {
-  const days = getMonthDays(monthKey);
-  const n = days.length;
-  if (n <= 1) return { q1: days, q2: [] };
-  const half = Math.floor(n / 2);
-  return { q1: days.slice(0, half), q2: days.slice(half) };
-}
-
-function updateQuinzenaChipLabels() {
-  const mk = selectedMonthKey || pickDefaultMonthKey();
-  if (!mk) {
-    chipQ1.textContent = "Quinzena 1";
-    chipQ2.textContent = "Quinzena 2";
-    return;
-  }
-  const { q1, q2 } = getQuinzenaSlices(mk);
-  chipQ1.textContent = `Quinzena 1 (${q1.length} dias)`;
-  chipQ2.textContent = `Quinzena 2 (${q2.length} dias)`;
-}
-
-// ===== Filters =====
-function setActiveChip(filterKey) {
-  chips.forEach((b) => b.classList.toggle("chip--active", b.dataset.filter === filterKey));
-}
-
-function pickAnchorDate() {
-  if (daySeries.length === 0) return null;
-  return daySeries[daySeries.length - 1].date;
-}
-
-function getFilteredDaySeries() {
-  if (!daySeries.length) return [];
-  let resultKeys = null;
-
-  if (activeFilter === "month") {
-    if (!selectedMonthKey) {
-      resultKeys = daySeries.map((d) => d.dateKey);
-    } else {
-      resultKeys = getMonthDays(selectedMonthKey).map((d) => d.dateKey);
-    }
-  }
-
-  if (activeFilter === "quinzena-1" || activeFilter === "quinzena-2") {
-    const mk = selectedMonthKey || pickDefaultMonthKey();
-    const { q1, q2 } = getQuinzenaSlices(mk);
-    const list = activeFilter === "quinzena-1" ? q1 : q2;
-    resultKeys = list.map((d) => d.dateKey);
-  }
-
-  if (activeFilter === "today") {
-    const t = todayLocal();
-    const match = daySeries.find((d) => sameDay(d.date, t));
-    const use = match ? match.dateKey : daySeries[daySeries.length - 1].dateKey;
-    resultKeys = [use];
-  }
-
-  if (activeFilter === "next7") {
-    const t = todayLocal();
-    const idxToday = daySeries.findIndex((d) => sameDay(d.date, t));
-    const startIdx = idxToday >= 0 ? idxToday : daySeries.length - 1;
-    const slice = daySeries.slice(startIdx, startIdx + 7);
-    resultKeys = slice.map((d) => d.dateKey);
-  }
-
-  if (!resultKeys) {
-    const base = anchorDate || pickAnchorDate();
-    const mk = toMonthKey(base);
-    resultKeys = getMonthDays(mk).map((d) => d.dateKey);
-  }
-
-  return daySeries.filter((d) => resultKeys.includes(d.dateKey));
-}
-
-function getSelectedDayIfAny(filteredDays) {
-  if (!selectedDayKey) return null;
-  return filteredDays.find((d) => d.dateKey === selectedDayKey) || null;
-}
-
-function applyFilter(filterKey) {
-  activeFilter = filterKey;
-  setActiveChip(filterKey);
-
-  const result = getFilteredDaySeries();
-  if (selectedDayKey && !result.some((d) => d.dateKey === selectedDayKey)) {
-    selectedDayKey = null;
-    closeModal(true);
-  }
-
-  render();
-}
-
-// ===== Modal =====
-function openModal() {
-  modal.classList.add("modal--open");
-  modal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-}
-
-function closeModal(forceUnlock = false) {
-  modal.classList.remove("modal--open");
-  modal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-}
-
-
-// ===== Repasses Modal =====
-function openRepassesModal() {
-  if (!repassesModal) return;
-  repassesModal.classList.add("modal--open");
-  repassesModal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-}
-
-function closeRepassesModal() {
-  if (!repassesModal) return;
-  repassesModal.classList.remove("modal--open");
-  repassesModal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-}
-
-function recalcAfterRepasseChange(options = {}) {
-  const { updateDayModal = true } = options;
-  daySeries = buildDaySeries(rawRows, repasseValues);
-  monthKeys = buildMonthKeys();
-
-  if (selectedMonthKey && !monthKeys.includes(selectedMonthKey)) {
-    selectedMonthKey = pickDefaultMonthKey();
-  }
-
-  populateMonthSelect();
-  updateQuinzenaChipLabels();
-  render();
-
-  if (updateDayModal && modal && modal.classList.contains("modal--open")) {
-    const filtered = getFilteredDaySeries();
-    const selected = getSelectedDayIfAny(filtered);
-    if (selected) renderModalForDay(selected);
-  }
-}
-
-function getSimulatedRepassesForView() {
-  const filtered = getFilteredDaySeries();
-
-  return filtered
-    .map((d) => {
-      const v = Number(repasseValues.get(d.dateKey));
-      return {
-        date: d.date,
-        dateKey: d.dateKey,
-        value: Number.isFinite(v) && v > 0 ? v : 0,
-      };
-    })
-    .filter((x) => x.value > 0)
-    .sort((a, b) => a.date - b.date);
-}
-
-
-function renderRepassesModal() {
-  if (!repassesList || !repassesCount || !repassesTotal || !repassesEmpty) return;
-
-  const items = getSimulatedRepassesForView();
-
-  repassesCount.textContent = String(items.length);
-  const total = items.reduce((acc, x) => acc + (x.value || 0), 0);
-  repassesTotal.textContent = brl.format(total);
-
-  if (repassesSummary) {
-    repassesSummary.textContent = "Considerando o período exibido na tela.";
-  }
-
-  repassesList.innerHTML = "";
-  if (items.length === 0) {
-    repassesEmpty.style.display = "block";
-    if (repassesClearAll) repassesClearAll.disabled = true;
-    return;
-  }
-
-  repassesEmpty.style.display = "none";
-  if (repassesClearAll) repassesClearAll.disabled = false;
-
-  for (const it of items) {
-    const row = document.createElement("div");
-    row.className = "repasses__row";
-
-    const meta = document.createElement("div");
-    meta.className = "repasses__meta";
-
-    const dateEl = document.createElement("div");
-    dateEl.className = "repasses__date";
-    dateEl.textContent = formatDateBR(it.date);
-
-    const valueEl = document.createElement("div");
-    valueEl.className = "repasses__value";
-    valueEl.textContent = brl.format(it.value || 0);
-
-    meta.appendChild(dateEl);
-    meta.appendChild(valueEl);
-
-    const actions = document.createElement("div");
-    actions.className = "repasses__actions";
-
-    const goBtn = document.createElement("button");
-    goBtn.type = "button";
-    goBtn.className = "chip chip--ghost";
-    goBtn.textContent = "Ir para o dia";
-    goBtn.onclick = () => {
-      closeRepassesModal();
-      selectedDayKey = it.dateKey;
-      render();
-      const day = daySeries.find((d) => d.dateKey === it.dateKey);
-      if (day) {
-        renderModalForDay(day);
-        openModal();
-      }
-    };
-
-    const clearBtn = document.createElement("button");
-    clearBtn.type = "button";
-    clearBtn.className = "chip chip--ghost";
-    clearBtn.textContent = "Limpar";
-    clearBtn.onclick = (e) => {
-      if (e) e.stopPropagation();
-      repasseValues.delete(it.dateKey);
-      saveRepasseValues();
-      recalcAfterRepasseChange({ updateDayModal: false });
-      renderRepassesModal();
-    };
-
-    actions.appendChild(goBtn);
-    actions.appendChild(clearBtn);
-
-    row.appendChild(meta);
-    row.appendChild(actions);
-
-    repassesList.appendChild(row);
-  }
-}
-
-function renderModalForDay(day) {
-  if (!day) return;
-
-  modalTitle.textContent = "Detalhes do dia";
-  modalSubtitle.textContent = formatDateBR(day.date);
-
-  const BOL_LABEL = "BOLETOS A RECEBER";
-  const hasDiscount = boletosDiscountDays.has(day.dateKey);
-
-  // Captura valor original de BOLETOS A RECEBER (se existir)
-  const boletosRow = day.rows.find(
-    (x) =>
-      (x.tipo || "").toLowerCase() === "entrada" &&
-      normalizeText(x.descricao) === normalizeText(BOL_LABEL)
+function setupFilters(rows) {
+  const years = Array.from(new Set(rows.filter((r) => r.dataProg).map((r) => r.dataProg.getFullYear()))).sort(
+    (a, b) => a - b
   );
-  const boletosValor = boletosRow ? Number(boletosRow.valor) : 0;
 
-  const entradaRows = [
-    { descricao: "SALDO INICIAL", valor: day.saldoInicial, strong: true },
-    ...(day.repasseApplied > 0
-      ? [
-          {
-            descricao: "REPASSE (SIMULADO)",
-            valor: day.repasseApplied,
-            strong: true,
-            simulated: true,
-          },
-        ]
-      : []),
-    ...day.rows
-      .filter(
-        (x) =>
-          (x.tipo || "").toLowerCase() === "entrada" &&
-          normalizeText(x.descricao) !== "SALDO"
-      )
-      .map((x) => {
-        const v = applyBoletosDiscountIfNeeded(day.dateKey, x.descricao, x.valor);
-        const isBoletos = normalizeText(x.descricao) === normalizeText(BOL_LABEL);
-        return {
-          descricao: x.descricao,
-          valor: v,
-          strong: false,
-          isBoletos,
-        };
-      }),
-  ];
-
-  const saidaRows = day.rows
-    .filter((x) => (x.tipo || "").toLowerCase() === "saída" || (x.tipo || "").toLowerCase() === "saida")
-    .map((x) => ({ descricao: x.descricao, valor: x.valor }));
-
-  // Total exibido (simulação): já vem ajustado pela previsão (se ativa)
-  const totalEntradasView = day.entradasResumo || 0;
-
-  modalTotalEntradas.textContent = brl.format(totalEntradasView);
-  modalTotalSaidas.textContent = brl.format(day.saidasDia);
-
-  // Repasse necessário (sugestão) + simulação:
-  // - Sugestão aparece quando (saldoInicial + entradasOrig) < saidasDia
-  // - Se o toggle estiver ativo, o repasse é aplicado como entrada adicional do dia e o fluxo é recalculado a partir dele.
-  if (day.repasseSuggested > 0) {
-    modalRepasse.textContent = brl.format(day.repasseSuggested);
-    modalRepasseWrap.style.display = "flex";
-
-    if (modalRepasseToggle) {
-      modalRepasseToggle.checked = repasseValues.has(day.dateKey);
-      modalRepasseToggle.onchange = () => {
-        if (modalRepasseToggle.checked) {
-          if (day.repasseSuggested > 0) repasseValues.set(day.dateKey, day.repasseSuggested);
-        } else {
-          repasseValues.delete(day.dateKey);
-        }
-        saveRepasseValues();
-        recalcAfterRepasseChange();
-      };
-    }
-  } else {
-    modalRepasseWrap.style.display = "none";
-    if (modalRepasseToggle) {
-      modalRepasseToggle.checked = false;
-      modalRepasseToggle.onchange = null;
-    }
+  if (!years.length) {
+    years.push(state.today.getFullYear());
   }
 
-  modalEntries.innerHTML =
-    entradaRows.length === 0
-      ? `<div class="list__empty">Sem entradas neste dia.</div>`
-      : entradaRows
-          .map((r) => {
-            if (r.isBoletos) {
-              const chkId = `boletos-discount-${day.dateKey}`;
-              return `
-                <div class="list__row">
-                  <div class="list__desc">
-                    <label class="chk chk--inline" for="${chkId}">
-                      <input type="checkbox" id="${chkId}" ${hasDiscount ? "checked" : ""} />
-                      <span>${r.descricao}</span>
-                      <span class="chk__hint">-10% (previsão)</span>
-                    </label>
-                  </div>
-                  <div class="list__amt list__amt--pos">${brl.format(r.valor)}</div>
-                </div>
-              `;
-            }
-
-            return `
-              <div class="list__row">
-                <div class="list__desc">${r.strong ? `<strong>${r.descricao}</strong>` : r.descricao}</div>
-                <div class="list__amt list__amt--pos">${brl.format(r.valor)}</div>
-              </div>
-            `;
-          })
-          .join("");
-
-  // Listener do checkbox (se existir)
-  if (boletosValor > 0) {
-    const chk = modalEntries.querySelector(`input[id="boletos-discount-${day.dateKey}"]`);
-    if (chk) {
-      chk.onchange = () => {
-        if (chk.checked) {
-          boletosDiscountDays.add(day.dateKey);
-        } else {
-          boletosDiscountDays.delete(day.dateKey);
-        }
-        saveBoletosDiscountDays();
-        // Recalcula tudo (cards, tabelas e modal), sem alterar o Google Sheets
-        recalcAfterRepasseChange({ updateDayModal: true });
-      };
-    }
+  state.selectedYear = state.today.getFullYear();
+  if (!years.includes(state.selectedYear)) {
+    state.selectedYear = years[years.length - 1];
   }
 
-  modalExpenses.innerHTML =
-    saidaRows.length === 0
-      ? `<div class="list__empty">Sem saídas neste dia.</div>`
-      : saidaRows
-          .map(
-            (r) => `
-              <div class="list__row">
-                <div class="list__desc">${r.descricao}</div>
-                <div class="list__amt list__amt--neg">${brl.format(r.valor)}</div>
-              </div>
-            `
-          )
-          .join("");
+  dom.yearFilter.innerHTML = years
+    .map((year) => `<option value="${year}">${year}</option>`)
+    .join("");
+  dom.yearFilter.value = String(state.selectedYear);
 
-  openModal();
+  populateMonthFilter(state.selectedYear);
+
+  dom.yearFilter.addEventListener("change", (event) => {
+    state.selectedYear = Number(event.target.value);
+    populateMonthFilter(state.selectedYear);
+    renderDashboard();
+  });
+
+  dom.monthFilter.addEventListener("change", (event) => {
+    state.selectedMonth = Number(event.target.value);
+    renderDashboard();
+  });
 }
 
-// ===== Render =====
-function renderCards(daysForCards) {
-  if (!daysForCards || daysForCards.length === 0) {
-    totalEntradasEl.textContent = brl.format(0);
-    totalSaidasEl.textContent = brl.format(0);
-    return;
-  }
+function populateMonthFilter(year) {
+  const hasCurrentYear = year === state.today.getFullYear();
+  const maxMonth = hasCurrentYear ? state.today.getMonth() + 1 : 12;
 
-  const first = daysForCards[0];
-  const saldoInicialPeriodo = first.saldoInicial;
-
-  const entradasPeriodo = daysForCards.reduce((acc, d) => acc + d.entradasDia, 0);
-  const recebimentos = saldoInicialPeriodo + entradasPeriodo;
-
-  const pagamentos = daysForCards.reduce((acc, d) => acc + d.saidasDia, 0);
-
-  totalEntradasEl.textContent = brl.format(recebimentos);
-  totalSaidasEl.textContent = brl.format(pagamentos);
-}
-
-function renderDailySummary(filteredDays) {
-  dailySummaryBody.innerHTML = filteredDays
-    .map((d) => {
-      const saldoClass = d.saldoFinal < 0 ? "amount--neg" : "amount--pos";
-      const rowClass = d.dateKey === selectedDayKey ? "row--selected" : "";
-      return `
-        <tr class="${rowClass}" data-day="${d.dateKey}">
-          <td>${formatDateBR(d.date)}</td>
-          <td class="amount--pos">${brl.format(d.entradasResumo)}</td>
-          <td class="amount--muted">${brl.format(d.saidasDia)}</td>
-          <td class="${saldoClass}">${brl.format(d.saldoFinal)}</td>
-        </tr>
-      `;
-    })
+  dom.monthFilter.innerHTML = Array.from({ length: maxMonth }, (_, i) => i + 1)
+    .map(
+      (month) =>
+        `<option value="${month}">${monthFormatter.format(new Date(year, month - 1, 1)).replace(/^\w/, (c) =>
+          c.toUpperCase()
+        )}</option>`
+    )
     .join("");
 
-  Array.from(dailySummaryBody.querySelectorAll("tr[data-day]")).forEach((tr) => {
-    tr.addEventListener("click", () => {
-      const key = tr.getAttribute("data-day");
-
-      if (selectedDayKey === key) {
-        selectedDayKey = null;
-        closeModal(true);
-        render();
-        return;
-      }
-
-      selectedDayKey = key;
-      render();
-
-      const filtered = getFilteredDaySeries();
-      const selected = getSelectedDayIfAny(filtered);
-      if (selected) renderModalForDay(selected);
-    });
-  });
+  state.selectedMonth = hasCurrentYear ? state.today.getMonth() + 1 : 1;
+  dom.monthFilter.value = String(state.selectedMonth);
 }
 
-function render() {
-  const filteredDays = getFilteredDaySeries();
-  const selected = getSelectedDayIfAny(filteredDays);
-  const daysForCards = selected ? [selected] : filteredDays;
+function renderKpis() {
+  const { adherence, producedCount, dailyAverage } = MetricsService.calculateKpis(
+    state.rows,
+    state.selectedYear,
+    state.selectedMonth,
+    state.today
+  );
 
-  renderCards(daysForCards);
-  renderDailySummary(filteredDays);
+  dom.kpiAdherence.textContent = `${adherence.toFixed(1)}%`;
+  dom.kpiProduced.textContent = String(producedCount);
+  dom.kpiDailyAverage.textContent = dailyAverage.toFixed(2).replace(".", ",");
+}
 
-  if (selectedDayKey && !selected) {
-    selectedDayKey = null;
-    closeModal(true);
+function renderChart() {
+  const { labels, programmedData, producedData } = MetricsService.buildDailySeries(
+    state.rows,
+    state.selectedYear,
+    state.selectedMonth,
+    state.today
+  );
+
+  const chartData = {
+    labels: labels.map(formatLabelDate),
+    datasets: [
+      {
+        label: "Programado",
+        data: programmedData,
+        borderColor: "#c6d1ca",
+        backgroundColor: "rgba(198, 209, 202, 0.18)",
+        borderWidth: 2,
+        fill: false,
+        tension: 0.25,
+        pointRadius: 2,
+      },
+      {
+        label: "Produzido",
+        data: producedData,
+        borderColor: "#2e8b57",
+        backgroundColor: "rgba(46, 139, 87, 0.18)",
+        borderWidth: 2,
+        fill: false,
+        tension: 0.25,
+        pointRadius: 2,
+      },
+    ],
+  };
+
+  if (state.chart) {
+    state.chart.data = chartData;
+    state.chart.update();
+    return;
   }
-}
 
-// ===== Events =====
-chips.forEach((b) => b.addEventListener("click", () => applyFilter(b.dataset.filter)));
-
-
-clearDayBtn.addEventListener("click", () => {
-  selectedDayKey = null;
-  closeModal(true);
-  render();
-});
-
-if (clearBoletosDiscountsBtn) {
-  clearBoletosDiscountsBtn.addEventListener("click", () => {
-    // Remove todas as simulações de -10% (somente visual)
-    boletosDiscountDays = new Set();
-    saveBoletosDiscountDays();
-    recalcAfterRepasseChange({ updateDayModal: true });
+  state.chart = new Chart(dom.chartCanvas, {
+    type: "line",
+    data: chartData,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: "index",
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          labels: { color: "#f3f6f4" },
+        },
+      },
+      scales: {
+        x: {
+          ticks: { color: "#a8b2ad" },
+          grid: { color: "rgba(255,255,255,0.05)" },
+        },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            color: "#a8b2ad",
+            precision: 0,
+          },
+          grid: { color: "rgba(255,255,255,0.05)" },
+        },
+      },
+    },
   });
 }
 
-
-
-monthSelect.addEventListener("change", () => {
-  selectedMonthKey = monthSelect.value || null;
-  updateQuinzenaChipLabels();
-  selectedDayKey = null;
-  closeModal(true);
-  activeFilter = "month";
-  setActiveChip(null);
-  render();
-});
-
-// Modal controls
-modalOverlay.addEventListener("click", () => closeModal(true));
-modalClose.addEventListener("click", () => closeModal(true));
-
-// Repasses modal controls
-if (openRepassesBtn) {
-  openRepassesBtn.addEventListener("click", () => {
-    // Evita manter o modal de detalhes aberto por trás
-    if (modal && modal.classList.contains("modal--open")) closeModal(true);
-
-    renderRepassesModal();
-    openRepassesModal();
-  });
-}
-if (repassesOverlay) repassesOverlay.addEventListener("click", () => closeRepassesModal());
-if (repassesClose) repassesClose.addEventListener("click", () => closeRepassesModal());
-if (repassesClearAll) {
-  repassesClearAll.addEventListener("click", () => {
-    const items = getSimulatedRepassesForView();
-    if (items.length === 0) return;
-    const ok = confirm("Limpar todos os repasses simulados?");
-    if (!ok) return;
-    repasseValues = new Map();
-    saveRepasseValues();
-    recalcAfterRepasseChange();
-    renderRepassesModal();
-  });
+function renderDashboard() {
+  renderKpis();
+  renderChart();
 }
 
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape") return;
-  closeModal(true);
-  closeRepassesModal();
-});
-
-// ===== INIT =====
 async function init() {
   try {
-    setConnection(null, "Desconectado");
-    const res = await fetch(CSV_URL, { cache: "no-store" });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    const text = await res.text();
-    rawRows = parseCSV(text);
-
-    repasseValues = loadRepasseValues();
-
-    boletosDiscountDays = loadBoletosDiscountDays();
-
-    daySeries = buildDaySeries(rawRows, repasseValues);
-    anchorDate = pickAnchorDate();
-
-    monthKeys = buildMonthKeys();
-    selectedMonthKey = pickDefaultMonthKey();
-    populateMonthSelect();
-    updateQuinzenaChipLabels();
-
-    setActiveChip("today");
-    activeFilter = "today";
-
-    setConnection("ok", "Conectado");
-    render();
-  } catch (err) {
-    console.error(err);
-    setConnection("err", "Desconectado");
+    state.rows = await ProductionDataService.loadData();
+    setupFilters(state.rows);
+    renderDashboard();
+  } catch (error) {
+    console.error(error);
+    alert("Não foi possível carregar o JSON consolidado. Verifique o arquivo consolidado.json.");
   }
 }
 

@@ -1,0 +1,110 @@
+[
+  {
+    "serie": "12345",
+    "linha": "Linha A",
+    "potencia": "10CV",
+    "setorProgramado": "Montagem",
+    "dataProg": "2026-04-01",
+    "setorProduzido": "Montagem",
+    "dataProduzida": "2026-04-02"
+  },
+  {
+    "serie": "12346",
+    "linha": "Linha A",
+    "potencia": "15CV",
+    "setorProgramado": "Montagem",
+    "dataProg": "2026-04-02",
+    "setorProduzido": "Montagem",
+    "dataProduzida": "2026-04-02"
+  },
+  {
+    "serie": "12347",
+    "linha": "Linha B",
+    "potencia": "20CV",
+    "setorProgramado": "Bobinagem",
+    "dataProg": "2026-04-03",
+    "setorProduzido": "Bobinagem",
+    "dataProduzida": null
+  },
+  {
+    "serie": "12348",
+    "linha": "Linha B",
+    "potencia": "20CV",
+    "setorProgramado": "Bobinagem",
+    "dataProg": "2026-04-04",
+    "setorProduzido": "Bobinagem",
+    "dataProduzida": "2026-04-05"
+  },
+  {
+    "serie": "12349",
+    "linha": "Linha C",
+    "potencia": "30CV",
+    "setorProgramado": "Montagem",
+    "dataProg": "2026-04-06",
+    "setorProduzido": "Montagem",
+    "dataProduzida": "2026-04-07"
+  },
+  {
+    "serie": "12350",
+    "linha": "Linha C",
+    "potencia": "30CV",
+    "setorProgramado": "Montagem",
+    "dataProg": "2026-04-07",
+    "setorProduzido": "Montagem",
+    "dataProduzida": null
+  },
+  {
+    "serie": "12351",
+    "linha": "Linha A",
+    "potencia": "10CV",
+    "setorProgramado": "Pintura",
+    "dataProg": "2026-04-08",
+    "setorProduzido": "Pintura",
+    "dataProduzida": "2026-04-09"
+  },
+  {
+    "serie": "12352",
+    "linha": "Linha D",
+    "potencia": "50CV",
+    "setorProgramado": "Bobinagem",
+    "dataProg": "2026-04-09",
+    "setorProduzido": "Bobinagem",
+    "dataProduzida": null
+  },
+  {
+    "serie": "12353",
+    "linha": "Linha D",
+    "potencia": "50CV",
+    "setorProgramado": "Montagem",
+    "dataProg": "2026-04-10",
+    "setorProduzido": "Montagem",
+    "dataProduzida": "2026-04-11"
+  },
+  {
+    "serie": "12354",
+    "linha": "Linha E",
+    "potencia": "75CV",
+    "setorProgramado": "Teste",
+    "dataProg": "2026-04-12",
+    "setorProduzido": "Teste",
+    "dataProduzida": null
+  },
+  {
+    "serie": "12355",
+    "linha": "Linha E",
+    "potencia": "75CV",
+    "setorProgramado": "Teste",
+    "dataProg": "2026-04-15",
+    "setorProduzido": "Teste",
+    "dataProduzida": "2026-04-16"
+  },
+  {
+    "serie": "12356",
+    "linha": "Linha F",
+    "potencia": "100CV",
+    "setorProgramado": "Montagem",
+    "dataProg": "2026-04-25",
+    "setorProduzido": "Montagem",
+    "dataProduzida": "2026-04-28"
+  }
+]
