@@ -3,210 +3,59 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Fluxo de Caixa - MMA</title>
+    <title>Dashboard de Produção | Planejado x Realizado</title>
     <link rel="stylesheet" href="styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+    <script src="app.js" defer></script>
   </head>
-
   <body>
-    <div class="app">
-      <header class="app__header">
-        <div class="app__title">
-          <p class="app__eyebrow">DASHBOARD FINANCEIRO</p>
-          <h1>Fluxo de Caixa - MMA</h1>
-        </div>
-
-        <div class="connection" id="connection-status" aria-live="polite">
-          <span class="connection__dot"></span>
-          <span id="connection-text">Desconectado</span>
+    <main class="dashboard">
+      <header class="dashboard__header">
+        <div>
+          <p class="dashboard__eyebrow">PRODUÇÃO CONSOLIDADA</p>
+          <h1>Planejado x Realizado</h1>
         </div>
       </header>
 
-      <section class="filters" aria-label="Filtros globais">
-        <div class="filters__box">
-          <div class="filters__quick" role="group" aria-label="Filtros rápidos">
-            <button class="chip" data-filter="quinzena-1" type="button">Quinzena 1</button>
-            <button class="chip" data-filter="quinzena-2" type="button">Quinzena 2</button>
-            <button class="chip" data-filter="today" type="button">Dia atual</button>
-            <button class="chip" data-filter="next7" type="button">7 dias</button>
-          </div>
+      <section class="panel filters" aria-label="Filtros globais">
+        <label class="field">
+          <span>Ano</span>
+          <select id="yearFilter" aria-label="Filtro de ano"></select>
+        </label>
 
-          <div class="filters__range">
-            <label class="field">
-              <span>Mês</span>
-              <select id="month-select" class="select" aria-label="Selecionar mês"></select>
-            </label>
-<button
-              class="chip chip--ghost"
-              id="clear-day-filter"
-              type="button"
-              title="Limpar filtro de dia"
-            >
-              Limpar dia
-            </button>
-
-            <button
-              class="chip chip--ghost"
-              id="open-repasses-modal"
-              type="button"
-              title="Ver dias com repasses simulados"
-            >
-              Repasses simulados
-            </button>
-            <button
-              class="chip chip--ghost"
-              id="clear-boletos-discounts"
-              type="button"
-              title="Desmarcar todas as previsões -10% de Boletos a receber"
-            >
-              Limpar -10% (boletos)
-            </button>
-
-
-          </div>
-        </div>
+        <label class="field">
+          <span>Mês</span>
+          <select id="monthFilter" aria-label="Filtro de mês"></select>
+        </label>
       </section>
 
-      <section class="cards" aria-label="Indicadores">
-        <article class="card">
-          <p>Recebimentos do período</p>
-          <h2 id="total-entradas">R$ 0,00</h2>
+      <section class="kpis" aria-label="Indicadores principais">
+        <article class="panel card">
+          <p>Aderência Geral</p>
+          <h2 id="kpiAdherence">0%</h2>
+          <small>Produzido até hoje / Programado até hoje</small>
         </article>
 
-        <article class="card">
-          <p>Pagamentos do período</p>
-          <h2 id="total-saidas">R$ 0,00</h2>
+        <article class="panel card">
+          <p>Total Produzido</p>
+          <h2 id="kpiProduced">0</h2>
+          <small>Registros com data produzida válida até hoje</small>
+        </article>
+
+        <article class="panel card">
+          <p>Média Diária de Produção</p>
+          <h2 id="kpiDailyAverage">0,00</h2>
+          <small>Total produzido / dias válidos do período filtrado</small>
         </article>
       </section>
 
-      <section class="tables" aria-label="Tabelas">
-        <div class="table-card">
-          <header class="table-card__header">
-            <div>
-              <h3>Resumo diário</h3>
-              <p>Saldo do Dia | Pagamentos | Saldo Final (clique em um dia para ver detalhes)</p>
-            </div>
-          </header>
-
-          <div class="table-wrapper" role="region" aria-label="Tabela de resumo diário">
-            <table class="data-table" id="summary-table">
-              <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Saldo do Dia</th>
-                  <th>Pagamentos</th>
-                  <th>Saldo final</th>
-                </tr>
-              </thead>
-              <tbody id="daily-summary"></tbody>
-            </table>
-          </div>
+      <section class="panel chart-panel" aria-label="Gráfico diário de produção">
+        <div class="chart-panel__title-wrap">
+          <h3>Evolução diária</h3>
+          <p>Programado por dataProg vs Produzido por dataProduzida (até hoje)</p>
         </div>
+        <canvas id="productionChart" aria-label="Gráfico de linha diário" role="img"></canvas>
       </section>
-
-      <footer class="footer">
-        <p>Dados carregados diretamente do Google Sheets (CSV).</p>
-      </footer>
-    </div>
-
-    <!-- MODAL (Desktop) / BOTTOM SHEET (Mobile) -->
-    <div class="modal" id="day-modal" aria-hidden="true" role="dialog" aria-modal="true">
-      <div class="modal__overlay" id="modal-overlay"></div>
-
-      <div class="modal__panel" role="document" aria-label="Detalhamento do dia">
-        <header class="modal__header">
-          <div>
-            <h4 class="modal__title" id="modal-title">Detalhes do dia</h4>
-            <p class="modal__subtitle" id="modal-subtitle">—</p>
-          </div>
-
-          <button class="modal__close" id="modal-close" type="button" aria-label="Fechar">
-            ✕
-          </button>
-        </header>
-
-        <div class="modal__totals">
-          <div class="pill">
-            <span>Saldo inicial + Entradas</span>
-            <strong id="modal-total-entradas">R$ 0,00</strong>
-          </div>
-          <div class="pill">
-            <span>Pagamentos</span>
-            <strong id="modal-total-saidas">R$ 0,00</strong>
-          </div>
-
-          <!-- Exibe apenas quando o saldo inicial do dia for negativo -->
-          <div class="pill pill--full pill--alert" id="modal-repasse-wrap" style="display: none;">
-            <div class="repasse__top">
-              <span>Repasse necessário</span>
-              <strong id="modal-repasse">R$ 0,00</strong>
-            </div>
-            <label class="repasse__toggle">
-              <input type="checkbox" id="modal-repasse-toggle" />
-              <span>Simular repasse neste dia</span>
-            </label>
-          </div>
-        </div>
-
-        <div class="modal__content">
-          <section class="modal__section">
-            <h5>Saldo inicial + Entradas</h5>
-            <div class="list" id="modal-entries"></div>
-          </section>
-
-          <section class="modal__section">
-            <h5>Pagamentos</h5>
-            <div class="list" id="modal-expenses"></div>
-          </section>
-        </div>
-      </div>
-    </div>
-
-    <script src="app.js" defer></script>
-  
-    <!-- MODAL: REPASSES SIMULADOS -->
-    <div class="modal" id="repasses-modal" aria-hidden="true" role="dialog" aria-modal="true">
-      <div class="modal__overlay" id="repasses-overlay"></div>
-
-      <div class="modal__panel" role="document" aria-label="Repasses simulados">
-        <header class="modal__header">
-          <div>
-            <h4 class="modal__title">Repasses simulados</h4>
-            <p class="modal__subtitle" id="repasses-summary">—</p>
-          </div>
-
-          <button class="modal__close" id="repasses-close" type="button" aria-label="Fechar">
-            ✕
-          </button>
-        </header>
-
-        <div class="modal__content">
-          <section class="modal__section">
-            <div class="repasses__head">
-              <div class="pill">
-                <span>Dias</span>
-                <strong id="repasses-count">0</strong>
-              </div>
-              <div class="pill">
-                <span>Total</span>
-                <strong id="repasses-total">R$ 0,00</strong>
-              </div>
-            </div>
-
-            <div class="repasses__empty" id="repasses-empty" style="display:none;">
-              Nenhum dia com repasse simulado no período.
-            </div>
-
-            <div class="repasses__list" id="repasses-list"></div>
-          </section>
-        </div>
-
-        <footer class="modal__footer">
-          <button class="chip chip--ghost" id="repasses-clear-all" type="button">
-            Limpar todos
-          </button>
-        </footer>
-      </div>
-    </div>
-
-</body>
+    </main>
+  </body>
 </html>
